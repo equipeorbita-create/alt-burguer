@@ -22,3 +22,12 @@ th{color:rgba(245,242,234,.6);font-weight:500;font-size:.8rem}
 .btn-alt.on{background:#f5f2ea;color:#1c1c1c;border-color:#f5f2ea}
 dialog{background:#262626;color:#f5f2ea;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:18px;width:calc(100% - 2rem);max-width:32rem;margin:auto}
 dialog::backdrop{background:rgba(0,0,0,.65)}
+
+@media print{
+  aside,header,.no-print,dialog,#toast{display:none!important}
+  .md\:ml-60{margin-left:0!important}
+  body{background:#fff!important;color:#000!important}
+  *{color:#000!important;border-color:#bbb!important}
+  .card{background:#fff!important}
+  .bg-brand{background:#444!important}
+}

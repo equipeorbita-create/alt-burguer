@@ -25,6 +25,13 @@ service cloud.firestore {
       return p in ['admin', 'gerente', 'funcionario'];
     }
 
+    function lancPath(id) {
+      return /databases/$(database)/documents/lancamentos/$(id);
+    }
+    function reembPath(id) {
+      return /databases/$(database)/documents/reembolsos/$(id);
+    }
+
     // ---------- Usuários ----------
     // O primeiro sócio é criado manualmente no console (veja o README).
     match /usuarios/{uid} {
@@ -118,6 +125,97 @@ service cloud.firestore {
         && request.resource.data.historico is list
         && request.resource.data.historico.size() <= 200;
       allow delete: if ehAdmin();
+    }
+
+    // ---------- Fase 4: financeiro e societário (só sócios) ----------
+    match /categorias_fin/{id} {
+      allow read: if ehAdmin();
+      allow create, update: if ehAdmin()
+        && request.resource.data.nome is string
+        && request.resource.data.nome.size() > 0
+        && request.resource.data.nome.size() <= 60
+        && request.resource.data.tipo in ['despesa', 'entrada', 'retirada'];
+      allow delete: if ehAdmin();
+    }
+
+    match /lancamentos/{id} {
+      allow read: if ehAdmin();
+
+      allow create: if ehAdmin()
+        && request.resource.data.tipo in ['despesa', 'entrada', 'retirada', 'emprestimo', 'reembolso']
+        && request.resource.data.valor is number
+        && request.resource.data.valor > 0
+        && request.resource.data.data is string
+        && request.resource.data.data.size() == 10
+        && request.resource.data.descricao is string
+        && request.resource.data.descricao.size() > 0
+        && request.resource.data.descricao.size() <= 200
+        && request.resource.data.criadoPor == request.auth.uid
+        // empréstimo e retirada precisam ter um sócio
+        && (!(request.resource.data.tipo in ['emprestimo', 'retirada', 'reembolso'])
+            || request.resource.data.socioId is string && request.resource.data.socioId.size() > 0)
+        // reembolso só nasce junto com o pagamento de uma solicitação aprovada pelos dois
+        && (request.resource.data.tipo != 'reembolso' || (
+              request.resource.data.reembolsoId is string
+              && id == 'reemb_' + request.resource.data.reembolsoId
+              && get(reembPath(request.resource.data.reembolsoId)).data.status == 'aprovado'
+              && get(reembPath(request.resource.data.reembolsoId)).data.aprovacoes.size() >= 2
+              && getAfter(reembPath(request.resource.data.reembolsoId)).data.status == 'pago'
+              && get(reembPath(request.resource.data.reembolsoId)).data.valor == request.resource.data.valor
+              && get(reembPath(request.resource.data.reembolsoId)).data.socioId == request.resource.data.socioId));
+
+      // valor, tipo, data e sócio não mudam; só texto de apoio
+      allow update: if ehAdmin()
+        && resource.data.tipo != 'reembolso'
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['descricao', 'categoria', 'obs', 'comprovante', 'canal', 'atualizadoEm'])
+        && request.resource.data.descricao.size() > 0
+        && request.resource.data.descricao.size() <= 200;
+
+      allow delete: if ehAdmin() && resource.data.tipo != 'reembolso';
+    }
+
+    match /reembolsos/{id} {
+      allow read: if ehAdmin();
+
+      // a solicitação já nasce com a aprovação de quem pediu (e só dela)
+      allow create: if ehAdmin()
+        && request.resource.data.status == 'pendente'
+        && request.resource.data.valor is number
+        && request.resource.data.valor > 0
+        && request.resource.data.socioId is string
+        && request.resource.data.motivo is string
+        && request.resource.data.motivo.size() <= 200
+        && request.resource.data.solicitadoPor == request.auth.uid
+        && request.resource.data.aprovacoes is map
+        && request.resource.data.aprovacoes.keys().hasOnly([request.auth.uid]);
+
+      allow update: if ehAdmin() && (
+        // 1) aprovar: cada sócio só adiciona a PRÓPRIA aprovação, uma única vez
+        ( resource.data.status == 'pendente'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aprovacoes', 'status'])
+          && request.resource.data.aprovacoes.diff(resource.data.aprovacoes).affectedKeys().hasOnly([request.auth.uid])
+          && !(request.auth.uid in resource.data.aprovacoes.keys())
+          && request.resource.data.aprovacoes[request.auth.uid] == true
+          && ((request.resource.data.status == 'aprovado') == (request.resource.data.aprovacoes.size() >= 2)) )
+        // 2) recusar
+        || ( resource.data.status in ['pendente', 'aprovado']
+          && request.resource.data.status == 'recusado'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'recusadoPor'])
+          && request.resource.data.recusadoPor == request.auth.uid )
+        // 3) pagar: só com 2 aprovações e junto com o lançamento do reembolso
+        || ( resource.data.status == 'aprovado'
+          && resource.data.aprovacoes.size() >= 2
+          && request.resource.data.status == 'pago'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'pagoEm', 'pagoPor'])
+          && request.resource.data.pagoPor == request.auth.uid
+          && existsAfter(lancPath('reemb_' + id))
+          && getAfter(lancPath('reemb_' + id)).data.tipo == 'reembolso'
+          && getAfter(lancPath('reemb_' + id)).data.valor == resource.data.valor
+          && getAfter(lancPath('reemb_' + id)).data.socioId == resource.data.socioId )
+      );
+
+      allow delete: if false;
     }
 
     // ---------- Tudo o que não foi liberado acima fica bloqueado ----------

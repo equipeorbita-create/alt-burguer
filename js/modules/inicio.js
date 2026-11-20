@@ -1,6 +1,7 @@
 import { db } from "../firebase.js";
 import { esc, PAPEIS, hojeISO, fmtDia, brl } from "../util.js";
-import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { resumo } from "../core/financas.js";
+import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const kpi = (rotulo, valor, dica = "") =>
   `<div class="card"><div class="text-off/60 text-sm">${rotulo}</div>
@@ -20,9 +21,10 @@ export async function render(el, { perfil }) {
 
   el.innerHTML = topo + `<p class="text-off/60">Carregando indicadores…</p>`;
   const pegar = async (n) => (await getDocs(collection(db, n))).docs.map((d) => ({ id: d.id, ...d.data() }));
-  let tar = [], forn = [], orc = [], pat = [];
+  let tar = [], forn = [], orc = [], pat = [], lan = [], reemb = [], cfg = {};
   try {
-    [tar, forn, orc, pat] = await Promise.all([pegar("tarefas"), admin ? pegar("fornecedores") : [], admin ? pegar("orcamentos") : [], admin ? pegar("patrimonio") : []]);
+    [tar, forn, orc, pat, lan, reemb] = await Promise.all([pegar("tarefas"), admin ? pegar("fornecedores") : [], admin ? pegar("orcamentos") : [], admin ? pegar("patrimonio") : [], admin ? pegar("lancamentos") : [], admin ? pegar("reembolsos") : []]);
+    if (admin) { const c = await getDoc(doc(db, "config", "geral")); cfg = c.exists() ? c.data() : {}; }
   } catch (e) {
     console.error(e);
     el.innerHTML = topo + `<div class="card">Não foi possível carregar os indicadores.</div>`;
@@ -44,7 +46,11 @@ export async function render(el, { perfil }) {
     orc.forEach((o) => { const k = o.item.trim().toLowerCase(); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(o); });
     const pend = [...grupos.values()].filter((g) => !g.some((o) => o.escolhido)).length;
     const total = orc.filter((o) => o.escolhido).reduce((s, o) => s + o.valor, 0);
-    extra = kpi("Fornecedores", forn.length) + kpi("Orçamentos sem escolha", pend, "itens aguardando decisão") +
+    const rs = resumo(lan, cfg.caixaInicial || 0);
+    extra = kpi("Saldo em caixa", brl(rs.caixa)) +
+            kpi("Emprestado pelos sócios", brl(rs.devedorTotal), "saldo a devolver") +
+            kpi("Reembolsos em aberto", reemb.filter((r) => r.status === "pendente" || r.status === "aprovado").length, "aguardando aprovação ou pagamento") +
+            kpi("Fornecedores", forn.length) + kpi("Orçamentos sem escolha", pend, "itens aguardando decisão") +
             kpi("Total dos orçamentos escolhidos", brl(total)) +
             kpi("Patrimônio (valor atribuído)", brl(pat.reduce((t, b) => t + b.valorAtribuido * b.quantidade, 0)), `${pat.length} bens no inventário`);
   }
@@ -70,5 +76,5 @@ export async function render(el, { perfil }) {
         <a class="underline text-brand text-sm mt-3 inline-block" href="#/tarefas">Abrir tarefas</a>
       </div>
     </div>
-    ${admin ? `<p class="text-xs text-off/50 mt-4">Os indicadores financeiros (caixa, empréstimos dos sócios) entram na Fase 4.</p>` : ""}`;
+`;
 }
