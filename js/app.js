@@ -6,6 +6,7 @@ const MODULOS = {
   inicio:   { nome: "Início",   papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/inicio.js") },
   tarefas:  { nome: "Tarefas",  papeis: ["admin", "gerente"],               carregar: () => import("./modules/tarefas.js") },
   fornecedores: { nome: "Fornecedores", papeis: ["admin"],                  carregar: () => import("./modules/fornecedores.js") },
+  patrimonio: { nome: "Patrimônio", papeis: ["admin"],                    carregar: () => import("./modules/patrimonio.js") },
   usuarios: { nome: "Usuários", papeis: ["admin"],                          carregar: () => import("./modules/usuarios.js") }
 };
 

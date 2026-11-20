@@ -20,9 +20,9 @@ export async function render(el, { perfil }) {
 
   el.innerHTML = topo + `<p class="text-off/60">Carregando indicadores…</p>`;
   const pegar = async (n) => (await getDocs(collection(db, n))).docs.map((d) => ({ id: d.id, ...d.data() }));
-  let tar = [], forn = [], orc = [];
+  let tar = [], forn = [], orc = [], pat = [];
   try {
-    [tar, forn, orc] = await Promise.all([pegar("tarefas"), admin ? pegar("fornecedores") : [], admin ? pegar("orcamentos") : []]);
+    [tar, forn, orc, pat] = await Promise.all([pegar("tarefas"), admin ? pegar("fornecedores") : [], admin ? pegar("orcamentos") : [], admin ? pegar("patrimonio") : []]);
   } catch (e) {
     console.error(e);
     el.innerHTML = topo + `<div class="card">Não foi possível carregar os indicadores.</div>`;
@@ -45,7 +45,8 @@ export async function render(el, { perfil }) {
     const pend = [...grupos.values()].filter((g) => !g.some((o) => o.escolhido)).length;
     const total = orc.filter((o) => o.escolhido).reduce((s, o) => s + o.valor, 0);
     extra = kpi("Fornecedores", forn.length) + kpi("Orçamentos sem escolha", pend, "itens aguardando decisão") +
-            kpi("Total dos orçamentos escolhidos", brl(total));
+            kpi("Total dos orçamentos escolhidos", brl(total)) +
+            kpi("Patrimônio (valor atribuído)", brl(pat.reduce((t, b) => t + b.valorAtribuido * b.quantidade, 0)), `${pat.length} bens no inventário`);
   }
 
   el.innerHTML = topo + `

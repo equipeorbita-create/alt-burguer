@@ -95,6 +95,31 @@ service cloud.firestore {
       allow delete: if ehAdmin();
     }
 
+    // ---------- Fase 3: inventário e patrimônio (só sócios) ----------
+    match /patrimonio/{id} {
+      allow read: if ehAdmin();
+      allow create, update: if ehAdmin()
+        && request.resource.data.nome is string
+        && request.resource.data.nome.size() > 0
+        && request.resource.data.nome.size() <= 120
+        && request.resource.data.quantidade is number
+        && request.resource.data.quantidade >= 1
+        && request.resource.data.quantidade <= 10000
+        && request.resource.data.estado in ['bom', 'regular', 'ruim']
+        && request.resource.data.situacao in ['em_uso', 'guardado', 'manutencao', 'baixado']
+        && request.resource.data.valorMercado is number
+        && request.resource.data.valorMercado >= 0
+        && request.resource.data.valorAtribuido is number
+        && request.resource.data.valorAtribuido >= 0
+        && (request.resource.data.get('valorAquisicao', null) == null
+            || request.resource.data.valorAquisicao is number)
+        && request.resource.data.fotos is list
+        && request.resource.data.fotos.size() <= 10
+        && request.resource.data.historico is list
+        && request.resource.data.historico.size() <= 200;
+      allow delete: if ehAdmin();
+    }
+
     // ---------- Tudo o que não foi liberado acima fica bloqueado ----------
     match /{document=**} {
       allow read, write: if false;
