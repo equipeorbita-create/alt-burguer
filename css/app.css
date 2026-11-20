@@ -19,3 +19,6 @@ table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid rgba(255,255,255,.08);font-size:.9rem;vertical-align:middle}
 th{color:rgba(245,242,234,.6);font-weight:500;font-size:.8rem}
 :focus-visible{outline:3px solid #ff6a13;outline-offset:2px}
+.btn-alt.on{background:#f5f2ea;color:#1c1c1c;border-color:#f5f2ea}
+dialog{background:#262626;color:#f5f2ea;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:18px;width:calc(100% - 2rem);max-width:32rem;margin:auto}
+dialog::backdrop{background:rgba(0,0,0,.65)}

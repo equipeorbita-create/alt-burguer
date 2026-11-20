@@ -60,6 +60,41 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ---------- Fase 2: tarefas (sócios e gerente) ----------
+    match /tarefas/{id} {
+      allow read: if ehAdmin() || ehGerente();
+      allow create, update: if (ehAdmin() || ehGerente())
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() > 0
+        && request.resource.data.titulo.size() <= 200
+        && request.resource.data.status in ['a_fazer', 'andamento', 'concluido']
+        && request.resource.data.tipo in ['tarefa', 'melhoria']
+        && request.resource.data.checklist is list
+        && request.resource.data.checklist.size() <= 50;
+      allow delete: if ehAdmin();
+    }
+
+    // ---------- Fase 2: fornecedores e orçamentos (só sócios) ----------
+    match /fornecedores/{id} {
+      allow read: if ehAdmin();
+      allow create, update: if ehAdmin()
+        && request.resource.data.nome is string
+        && request.resource.data.nome.size() > 0
+        && request.resource.data.nome.size() <= 120;
+      allow delete: if ehAdmin();
+    }
+    match /orcamentos/{id} {
+      allow read: if ehAdmin();
+      allow create, update: if ehAdmin()
+        && request.resource.data.item is string
+        && request.resource.data.item.size() > 0
+        && request.resource.data.fornecedorId is string
+        && request.resource.data.valor is number
+        && request.resource.data.valor > 0
+        && request.resource.data.escolhido is bool;
+      allow delete: if ehAdmin();
+    }
+
     // ---------- Tudo o que não foi liberado acima fica bloqueado ----------
     match /{document=**} {
       allow read, write: if false;

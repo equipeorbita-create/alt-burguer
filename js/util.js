@@ -37,3 +37,19 @@ export async function auditar(perfil, acao, detalhe = "") {
     console.error("Falha ao registrar auditoria", e);
   }
 }
+
+// ---------- Fase 2 ----------
+export const hojeISO = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Fortaleza" });
+export const fmtDia = (d) => (d ? d.split("-").reverse().join("/") : "");
+
+const _brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+export const brl = (v) => _brl.format(Number(v) || 0);
+
+// Aceita "4.200,50", "4200,50", "4200.50" e "4.200"
+export function parseBRL(s) {
+  let t = String(s).replace(/[R$\s]/g, "");
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : NaN;
+}

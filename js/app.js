@@ -4,12 +4,15 @@ import { esc, PAPEIS } from "./util.js";
 // Cada módulo novo das próximas fases entra aqui.
 const MODULOS = {
   inicio:   { nome: "Início",   papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/inicio.js") },
+  tarefas:  { nome: "Tarefas",  papeis: ["admin", "gerente"],               carregar: () => import("./modules/tarefas.js") },
+  fornecedores: { nome: "Fornecedores", papeis: ["admin"],                  carregar: () => import("./modules/fornecedores.js") },
   usuarios: { nome: "Usuários", papeis: ["admin"],                          carregar: () => import("./modules/usuarios.js") }
 };
 
 const $ = (id) => document.getElementById(id);
 let perfil = null;
 let iniciado = false;
+let limpar = null; // função de limpeza do módulo aberto (ex.: parar escuta em tempo real)
 
 observarSessao((p) => {
   if (!p) return location.replace("index.html");
@@ -28,6 +31,7 @@ observarSessao((p) => {
 });
 
 async function rotear() {
+  if (limpar) { limpar(); limpar = null; }
   const chave = location.hash.replace("#/", "") || "inicio";
   const m = MODULOS[chave];
   const main = $("conteudo");
@@ -42,7 +46,8 @@ async function rotear() {
   try {
     const mod = await m.carregar();
     main.innerHTML = "";
-    await mod.render(main, { perfil });
+    const r = await mod.render(main, { perfil });
+    limpar = typeof r === "function" ? r : null;
   } catch (e) {
     console.error(e);
     main.innerHTML = `<div class="card">Não foi possível carregar esta página.</div>`;
