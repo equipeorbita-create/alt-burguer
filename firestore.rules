@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Funções auxiliares ----------
+    function logado() {
+      return request.auth != null;
+    }
+    function meuPerfil() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+    function existePerfil() {
+      return exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+    function ativo() {
+      return logado() && existePerfil() && meuPerfil().ativo == true;
+    }
+    function ehAdmin() {
+      return ativo() && meuPerfil().papel == 'admin';
+    }
+    function ehGerente() {
+      return ativo() && meuPerfil().papel == 'gerente';
+    }
+    function papelValido(p) {
+      return p in ['admin', 'gerente', 'funcionario'];
+    }
+
+    // ---------- Usuários ----------
+    // O primeiro sócio é criado manualmente no console (veja o README).
+    match /usuarios/{uid} {
+      // Cada pessoa lê o próprio perfil; sócios leem todos.
+      allow read: if logado() && (request.auth.uid == uid || ehAdmin());
+
+      allow create: if ehAdmin()
+        && papelValido(request.resource.data.papel)
+        && request.resource.data.ativo is bool;
+
+      // Sócio edita os outros, mas não pode se desativar nem tirar o próprio acesso de sócio.
+      allow update: if ehAdmin()
+        && papelValido(request.resource.data.papel)
+        && request.resource.data.ativo is bool
+        && (request.auth.uid != uid
+            || (request.resource.data.papel == 'admin' && request.resource.data.ativo == true));
+
+      allow delete: if false;
+    }
+
+    // ---------- Configurações gerais (divisão 50/50, meta de CMV etc.) ----------
+    match /config/{id} {
+      allow read: if ativo();
+      allow write: if ehAdmin();
+    }
+
+    // ---------- Histórico de alterações: só inclusão, só sócios leem ----------
+    match /auditoria/{id} {
+      allow read: if ehAdmin();
+      allow create: if ativo()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.em == request.time;
+      allow update, delete: if false;
+    }
+
+    // ---------- Tudo o que não foi liberado acima fica bloqueado ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
