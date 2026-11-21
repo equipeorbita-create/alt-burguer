@@ -41,7 +41,8 @@ service cloud.firestore {
         && d.unidade in ['g', 'ml', 'un']
         && d.qtdEmbalagem is number && d.qtdEmbalagem > 0
         && d.estoqueMinimo is number && d.estoqueMinimo >= 0
-        && d.qr is string && d.ativo is bool;
+        && d.qr is string && d.ativo is bool
+        && d.get('eans', []) is list && d.get('eans', []).size() <= 5;
     }
 
     // ---------- Usuários ----------

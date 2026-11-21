@@ -4,6 +4,8 @@ import { esc, toast, auditar, brl, parseBRL, hojeISO, fmtDia, fmtData } from "..
 import { r2, carregarSocios } from "../core/financas.js";
 import { r3, estoqueDe, ordemPEPS, baixarPEPS, ajustarContagem, parseQtd, numero, diasAte, MOTIVOS } from "../core/estoque.js";
 import { lerCodigo } from "../core/scanner.js";
+import { soDigitos, gtinValido, candidatos, mesmoCodigo, paisGtin, consultarGTIN } from "../core/gtin.js";
+import { parseCSV, validarLinhas, MODELO_CSV } from "../core/importar.js";
 import { qrSvg, imprimirEtiquetas, htmlEtiqueta } from "../core/etiquetas.js";
 import {
   collection, doc, onSnapshot, getDocs, query, where, orderBy, limit, writeBatch, serverTimestamp
@@ -48,7 +50,11 @@ export async function render(el, { perfil }) {
         <label>Preço da embalagem (R$)<input name="precoEmbalagem" required inputmode="decimal" class="input" placeholder="165,00"></label>
         <label>Estoque mínimo<input name="estoqueMinimo" required inputmode="decimal" class="input" placeholder="Ex.: 3000"></label>
       </div>
-      <label>Código de barras de fábrica (opcional)<input name="ean" maxlength="30" inputmode="numeric" class="input"></label>
+      <div>
+        <label>Códigos de barras GTIN/EAN (opcional)<input name="eans" maxlength="120" inputmode="numeric" class="input" placeholder="Ex.: 7891234567895 (vários: separe com vírgula)"></label>
+        <div class="flex flex-wrap gap-3 mt-3"><button type="button" class="btn-alt" data-act="lerEan">Ler pela câmera</button><button type="button" class="btn-alt" data-act="buscarEan">Buscar dados do produto</button></div>
+        <p id="gtinMsg" class="text-sm text-ink/70 mt-2"></p>
+      </div>
       <div data-novo class="grid grid-cols-2 gap-4">
         <label>Estoque inicial<input name="estoqueInicial" inputmode="decimal" class="input" placeholder="0"></label>
         <label>Validade do estoque inicial<input name="validadeInicial" type="date" class="input"></label>
@@ -62,7 +68,9 @@ export async function render(el, { perfil }) {
   const raiz = el.querySelector("#raiz"), corpo = raiz.querySelector("#corpo");
   const dI = raiz.querySelector("#dI"), fI = raiz.querySelector("#fI"), dX = raiz.querySelector("#dX");
   const ativos = () => insumos.filter((i) => i.ativo !== false);
-  const achar = (cod) => ativos().find((i) => i.qr === cod.trim() || (i.ean && i.ean === cod.trim()));
+  const codigosDe = (i) => [...new Set([...(i.eans || []), ...(i.ean ? [i.ean] : [])])];
+  // reconhece o QR interno ou qualquer GTIN/EAN do insumo (UPC-A, EAN-13 e caixa DUN-14 são tratados como equivalentes)
+  const achar = (cod) => { const c = cod.trim(); return ativos().find((i) => i.qr === c || codigosDe(i).some((x) => mesmoCodigo(x, c))); };
   const estoque = (i) => estoqueDe(lotes, i.id);
   const proxVal = (i) => lotes.filter((l) => l.insumoId === i.id && l.validade).map((l) => l.validade).sort()[0];
   const opcoes = (lista, atual) => `<option value="">Escolha o insumo...</option>` + lista.sort((a, b) => a.nome.localeCompare(b.nome))
@@ -90,7 +98,7 @@ export async function render(el, { perfil }) {
       <select id="fcat" class="input" style="width:auto;margin:0"></select>
       <label class="flex items-center gap-2" style="margin:0;font-size:1rem"><input type="checkbox" id="fal" ${f.alerta ? "checked" : ""}> Só alertas</label>
       <span class="flex-1"></span>
-      ${admin ? `<button class="btn-alt" data-act="etqs">Etiquetas de todos</button><button class="btn" data-act="novoI">Novo insumo</button>` : ""}
+      ${admin ? `<button class="btn-alt" data-act="importar">Importar planilha</button><button class="btn-alt" data-act="etqs">Etiquetas de todos</button><button class="btn" data-act="novoI">Novo insumo</button>` : ""}
     </div>
     <div id="kpis" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-5"></div><div id="lista"></div>`;
 
@@ -115,7 +123,7 @@ export async function render(el, { perfil }) {
         ${lista.map((i) => {
           const e = estoque(i), st = e <= 0 ? '<span class="tag bad">Sem estoque</span>' : e < i.estoqueMinimo ? '<span class="tag bad">Baixo</span>' : '<span class="tag ok">OK</span>';
           const c = custos[i.id];
-          return `<tr><td><b>${esc(i.nome)}</b>${i.categoria ? `<br><small class="text-ink/70">${esc(i.categoria)}</small>` : ""}</td>
+          return `<tr><td><b>${esc(i.nome)}</b>${i.categoria ? `<br><small class="text-ink/70">${esc(i.categoria)}</small>` : ""}${codigosDe(i)[0] ? `<br><small class="text-ink/70">EAN ${esc(codigosDe(i)[0])}</small>` : ""}</td>
             <td>${fq(e, i.unidade)} ${st}</td><td>${fq(i.estoqueMinimo, i.unidade)}</td><td>${tagVal(proxVal(i))}</td>
             ${admin ? `<td>${c ? `${brl(c.custoUnitario)}/${i.unidade}<br><small class="text-ink/70">emb. ${brl(c.precoEmbalagem)}</small>` : "—"}</td>` : ""}
             <td class="whitespace-nowrap"><button class="btn-alt" data-act="lotes" data-id="${i.id}">Lotes</button>
@@ -124,7 +132,7 @@ export async function render(el, { perfil }) {
         }).join("")}</table></div>`;
   }
 
-  function abrirInsumo(i) {
+  function abrirInsumo(i, pre) {
     editando = i || null;
     raiz.querySelector("#tI").textContent = i ? "Editar insumo" : "Novo insumo";
     fI.reset();
@@ -134,16 +142,41 @@ export async function render(el, { perfil }) {
     if (i) {
       const c = custos[i.id] || {};
       x.nome.value = i.nome; x.categoria.value = i.categoria || ""; x.unidade.value = i.unidade; x.qtdEmbalagem.value = num(i.qtdEmbalagem);
-      x.precoEmbalagem.value = num(c.precoEmbalagem ?? 0); x.estoqueMinimo.value = num(i.estoqueMinimo); x.ean.value = i.ean || ""; x.ativo.checked = i.ativo !== false;
+      x.precoEmbalagem.value = num(c.precoEmbalagem ?? 0); x.estoqueMinimo.value = num(i.estoqueMinimo); x.eans.value = codigosDe(i).join(", "); x.ativo.checked = i.ativo !== false;
     }
+    else if (pre) x.eans.value = pre.eans || "";
+    raiz.querySelector("#gtinMsg").textContent = pre?.eans ? `${paisGtin(pre.eans) ? "Código brasileiro (GTIN/EAN-13). " : ""}Toque em "Buscar dados do produto".` : "";
     dI.showModal();
+  }
+
+  // Consulta a base aberta pelo primeiro código do formulário e preenche o que estiver vazio
+  async function buscarGTIN() {
+    const x = fI.elements, msg = raiz.querySelector("#gtinMsg");
+    const cod = soDigitos(String(x.eans.value).split(/[\s,;]+/)[0] || "");
+    if (!cod) { msg.textContent = "Digite ou leia um código de barras primeiro."; return; }
+    msg.textContent = `${paisGtin(cod) ? "Código brasileiro. " : ""}Consultando a base aberta de produtos…`;
+    try {
+      const p = await consultarGTIN(cod);
+      if (!p) { msg.textContent = "Produto não encontrado na base aberta. Preencha manualmente: o código fica salvo e será reconhecido nas próximas leituras."; return; }
+      if (!x.nome.value.trim()) x.nome.value = p.nome;
+      if (p.unidade && !editando) { x.unidade.value = p.unidade; if (!x.qtdEmbalagem.value) x.qtdEmbalagem.value = num(p.qtd); }
+      msg.textContent = `Encontrado: ${p.nome}${p.qtdTexto ? " · " + p.qtdTexto : ""}. Confira os dados antes de salvar.`;
+    } catch (e) { msg.textContent = "Não foi possível consultar agora (sem internet ou serviço fora do ar). Preencha manualmente."; }
   }
 
   async function salvarInsumo() {
     const d = Object.fromEntries(new FormData(fI));
     const emb = numero(d.qtdEmbalagem), preco = parseBRL(d.precoEmbalagem), min = numero(d.estoqueMinimo || "0");
     if (!(emb > 0) || isNaN(preco) || preco < 0 || isNaN(min)) return toast("Confira a quantidade por embalagem, o preço e o mínimo.");
-    const custoUn = preco / emb, lote = writeBatch(db), base = { nome: d.nome.trim(), categoria: d.categoria.trim(), qtdEmbalagem: emb, estoqueMinimo: min, ean: d.ean.trim() };
+    const eans = [...new Set(String(d.eans || "").split(/[\s,;]+/).map(soDigitos).filter(Boolean))].slice(0, 5);
+    if (eans.some((e) => e.length < 6 || e.length > 14)) return toast("Cada código de barras deve ter de 6 a 14 números.");
+    for (const e of eans) {
+      const outro = insumos.find((x) => x.id !== editando?.id && codigosDe(x).some((y) => mesmoCodigo(y, e)));
+      if (outro) return toast(`O código ${e} já pertence a "${outro.nome}".`);
+    }
+    const suspeito = eans.find((e) => [8, 12, 13, 14].includes(e.length) && !gtinValido(e));
+    if (suspeito && !confirm(`O código ${suspeito} não passou na conferência do dígito verificador (pode ter sido digitado errado). Salvar mesmo assim?`)) return;
+    const custoUn = preco / emb, lote = writeBatch(db), base = { nome: d.nome.trim(), categoria: d.categoria.trim(), qtdEmbalagem: emb, estoqueMinimo: min, ean: eans[0] || "", eans };
     const preco2 = (insumoId, local) => {
       lote.set(doc(db, "insumos_custos", insumoId), { precoEmbalagem: r2(preco), custoUnitario: custoUn, atualizadoEm: serverTimestamp() }, { merge: true });
       lote.set(doc(collection(db, "insumos_custos", insumoId, "historico")), { data: hojeISO(), precoEmbalagem: r2(preco), custoUnitario: custoUn, local, criadoEm: serverTimestamp() });
@@ -168,6 +201,52 @@ export async function render(el, { perfil }) {
       await auditar(perfil, "insumo_criado", base.nome);
     }
     dI.close(); toast("Insumo salvo.");
+  }
+
+  // ===== Importar planilha (só sócios) =====
+  let importacao = [];
+  function abrirImportar() {
+    importacao = [];
+    dX.innerHTML = `<h2 class="h2 mb-2">Importar insumos</h2>
+      <p class="text-ink/70 mb-3">Envie uma planilha CSV (no Excel: Salvar como "CSV"). Colunas: <b>nome; categoria; unidade</b> (g, ml ou un)<b>; qtd_embalagem; preco_embalagem; estoque_minimo; gtin</b>. Itens com código já cadastrado são recusados.</p>
+      <button type="button" class="btn-alt mb-4" data-act="csvmodelo">Baixar planilha modelo</button>
+      <label>Arquivo CSV<input type="file" id="csvarq" accept=".csv,.txt,text/csv" class="input"></label>
+      <div id="csvprev" class="mt-4 text-sm"></div>
+      <div class="flex gap-3 justify-end mt-5"><button type="button" data-fechar="dX" class="btn-alt">Fechar</button><button type="button" class="btn" id="csvgo" data-act="csvgo" disabled>Importar</button></div>`;
+    dX.showModal();
+  }
+  function baixarModelo() {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\ufeff" + MODELO_CSV], { type: "text/csv" }));
+    a.download = "modelo-insumos.csv"; a.click();
+  }
+  async function lerArquivoCSV(arq) {
+    if (!arq) return;
+    const buf = await arq.arrayBuffer();
+    let texto;
+    try { texto = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch (e) { texto = new TextDecoder("windows-1252").decode(buf); } // Excel antigo
+    const existentes = insumos.flatMap(codigosDe).flatMap(candidatos);
+    const r = validarLinhas(parseCSV(texto), existentes);
+    importacao = r.validas.slice(0, 300);
+    dX.querySelector("#csvprev").innerHTML = `<p><b>${r.validas.length}</b> insumos prontos para importar${r.validas.length > 300 ? " (serão importados os 300 primeiros)" : ""}.</p>` +
+      (r.erros.length ? `<p class="mt-2"><b>${r.erros.length}</b> linhas com problema (não serão importadas):</p><ul class="list-disc pl-5">${r.erros.slice(0, 8).map((e) => `<li>Linha ${e.linha}: ${esc(e.msg)}</li>`).join("")}</ul>${r.erros.length > 8 ? "<p>…e mais.</p>" : ""}` : "");
+    dX.querySelector("#csvgo").disabled = !importacao.length;
+  }
+  async function importarTudo() {
+    if (!importacao.length) return;
+    for (let k = 0; k < importacao.length; k += 100) {
+      const lote = writeBatch(db);
+      importacao.slice(k, k + 100).forEach((it) => {
+        const ref = doc(collection(db, "insumos")), custoUn = it.preco / it.qtdEmbalagem;
+        lote.set(ref, { nome: it.nome, categoria: it.categoria, unidade: it.unidade, qtdEmbalagem: it.qtdEmbalagem, estoqueMinimo: it.estoqueMinimo, ean: it.eans[0] || "", eans: it.eans, qr: "ALT-" + ref.id.slice(0, 6).toUpperCase(), ativo: true, criadoEm: serverTimestamp() });
+        lote.set(doc(db, "insumos_custos", ref.id), { precoEmbalagem: r2(it.preco), custoUnitario: custoUn, atualizadoEm: serverTimestamp() });
+        lote.set(doc(collection(db, "insumos_custos", ref.id, "historico")), { data: hojeISO(), precoEmbalagem: r2(it.preco), custoUnitario: custoUn, local: "Importação de planilha", criadoEm: serverTimestamp() });
+      });
+      await lote.commit();
+    }
+    await auditar(perfil, "insumos_importados", `${importacao.length} insumos por planilha`);
+    toast(`${importacao.length} insumos importados.`);
+    importacao = []; dX.close();
   }
 
   async function verEtiqueta(i) {
@@ -354,7 +433,13 @@ export async function render(el, { perfil }) {
     const cod = await lerCodigo("Ler código do insumo");
     if (!cod) return;
     const i = achar(cod);
-    if (!i) return toast(`Código "${cod}" não está cadastrado.`);
+    if (!i) {
+      const c = cod.trim();
+      if (admin && /^\d{6,14}$/.test(c) && confirm(`O código ${c} ainda não está cadastrado.\nCadastrar um novo insumo com ele agora?`)) {
+        aba = "insumos"; montar(); abrirInsumo(null, { eans: c }); await buscarGTIN(); return;
+      }
+      return toast(admin ? `Código "${c}" não está cadastrado.` : `Código "${c}" não está cadastrado. Peça a um sócio para cadastrá-lo.`);
+    }
     if (alvo === "compra") { compra.itens.push({ insumoId: i.id, emb: "1", valor: "", validade: "" }); aCompra(); return toast(i.nome); }
     sel[alvo] = i.id; (alvo === "baixa" ? aBaixa : aContagem)();
     raiz.querySelector(alvo === "baixa" ? "#bsel" : "#ksel").value = i.id;
@@ -374,6 +459,15 @@ export async function render(el, { perfil }) {
     try {
       if (a === "novoI") abrirInsumo(null);
       else if (a === "editI") abrirInsumo(ins);
+      else if (a === "lerEan") {
+        const cod = await lerCodigo("Ler código de barras");
+        if (cod && /^\d{6,14}$/.test(cod.trim())) { const x = fI.elements; x.eans.value = x.eans.value.trim() ? `${x.eans.value.trim()}, ${cod.trim()}` : cod.trim(); await buscarGTIN(); }
+        else if (cod) toast("Isso não é um código de barras numérico.");
+      }
+      else if (a === "buscarEan") await buscarGTIN();
+      else if (a === "importar") abrirImportar();
+      else if (a === "csvmodelo") baixarModelo();
+      else if (a === "csvgo") await importarTudo();
       else if (a === "lotes") verLotes(ins);
       else if (a === "precos") await verPrecos(ins);
       else if (a === "etq") await verEtiqueta(ins);
@@ -406,6 +500,7 @@ export async function render(el, { perfil }) {
     else if (t.id === "mt") { f.mt = t.value; aMov(); }
     else if (t.id === "bsel") { sel.baixa = t.value; aBaixa(); }
     else if (t.id === "ksel") { sel.contagem = t.value; aContagem(); }
+    else if (t.id === "csvarq") lerArquivoCSV(t.files[0]).catch(erro);
     else if (t.id === "cpago") compra.pagoPor = t.value;
     else if (t.id === "clancar") compra.lancar = t.checked;
     else if (t.dataset.ci !== undefined && t.dataset.k === "insumoId") { compra.itens[Number(t.dataset.ci)].insumoId = t.value; infoItem(Number(t.dataset.ci)); }
