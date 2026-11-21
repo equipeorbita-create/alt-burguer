@@ -1,7 +1,8 @@
 import { db } from "../firebase.js";
 import { esc, PAPEIS, hojeISO, fmtDia, brl } from "../util.js";
 import { resumo } from "../core/financas.js";
-import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { estoqueDe, diasAte } from "../core/estoque-calc.js";
+import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const kpi = (rotulo, valor, dica = "") =>
   `<div class="card"><div class="text-ink/70 text-sm">${rotulo}</div>
@@ -21,9 +22,10 @@ export async function render(el, { perfil }) {
 
   el.innerHTML = topo + `<p class="text-ink/70">Carregando indicadores…</p>`;
   const pegar = async (n) => (await getDocs(collection(db, n))).docs.map((d) => ({ id: d.id, ...d.data() }));
-  let tar = [], forn = [], orc = [], pat = [], lan = [], reemb = [], cfg = {};
+  let tar = [], forn = [], orc = [], pat = [], lan = [], reemb = [], cfg = {}, ins = [], lot = [];
   try {
-    [tar, forn, orc, pat, lan, reemb] = await Promise.all([pegar("tarefas"), admin ? pegar("fornecedores") : [], admin ? pegar("orcamentos") : [], admin ? pegar("patrimonio") : [], admin ? pegar("lancamentos") : [], admin ? pegar("reembolsos") : []]);
+    [tar, forn, orc, pat, lan, reemb, ins, lot] = await Promise.all([pegar("tarefas"), admin ? pegar("fornecedores") : [], admin ? pegar("orcamentos") : [], admin ? pegar("patrimonio") : [], admin ? pegar("lancamentos") : [], admin ? pegar("reembolsos") : [], pegar("insumos"),
+      getDocs(query(collection(db, "lotes"), where("qtdAtual", ">", 0))).then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() })))]);
     if (admin) { const c = await getDoc(doc(db, "config", "geral")); cfg = c.exists() ? c.data() : {}; }
   } catch (e) {
     console.error(e);
@@ -32,6 +34,8 @@ export async function render(el, { perfil }) {
   }
 
   const hoje = hojeISO();
+  const baixos = ins.filter((i) => i.ativo !== false && estoqueDe(lot, i.id) < i.estoqueMinimo).length;
+  const vencendo = lot.filter((l) => l.validade && diasAte(l.validade) <= 7).length;
   const abertas = tar.filter((t) => t.status !== "concluido");
   const atrasadas = abertas.filter((t) => t.prazo && t.prazo < hoje);
   const andamento = tar.filter((t) => t.status === "andamento");
@@ -57,6 +61,8 @@ export async function render(el, { perfil }) {
 
   el.innerHTML = topo + `
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+      ${kpi("Estoque abaixo do mínimo", baixos, baixos ? "veja em Estoque" : "tudo certo")}
+      ${kpi("Lotes vencendo (7 dias)", vencendo, vencendo ? "use primeiro (PEPS)" : "nenhum")}
       ${kpi("Tarefas em aberto", abertas.length)}
       ${kpi("Em andamento", andamento.length)}
       ${kpi("Atrasadas", atrasadas.length, atrasadas.length ? "passaram do prazo" : "tudo em dia")}

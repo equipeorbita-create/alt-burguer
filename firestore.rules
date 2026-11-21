@@ -32,6 +32,18 @@ service cloud.firestore {
       return /databases/$(database)/documents/reembolsos/$(id);
     }
 
+    function ehOperacional() {
+      return ativo() && meuPerfil().papel in ['admin', 'gerente'];
+    }
+    function insumoValido() {
+      let d = request.resource.data;
+      return d.nome is string && d.nome.size() > 0 && d.nome.size() <= 120
+        && d.unidade in ['g', 'ml', 'un']
+        && d.qtdEmbalagem is number && d.qtdEmbalagem > 0
+        && d.estoqueMinimo is number && d.estoqueMinimo >= 0
+        && d.qr is string && d.ativo is bool;
+    }
+
     // ---------- Usuários ----------
     // O primeiro sócio é criado manualmente no console (veja o README).
     match /usuarios/{uid} {
@@ -216,6 +228,81 @@ service cloud.firestore {
       );
 
       allow delete: if false;
+    }
+
+    // ---------- Fase 5: estoque ----------
+    // Insumos: todos os perfis leem (sem preços); só sócios cadastram. Nunca apagam (desativam).
+    match /insumos/{id} {
+      allow read: if ativo();
+      allow create: if ehAdmin() && insumoValido();
+      allow update: if ehAdmin() && insumoValido()
+        && request.resource.data.unidade == resource.data.unidade
+        && request.resource.data.qr == resource.data.qr;
+      allow delete: if false;
+    }
+
+    // Preços e custos: SÓ sócios (gerente e funcionário nunca veem)
+    match /insumos_custos/{id} {
+      allow read: if ehAdmin();
+      allow create, update: if ehAdmin()
+        && request.resource.data.precoEmbalagem is number
+        && request.resource.data.precoEmbalagem >= 0
+        && request.resource.data.custoUnitario is number
+        && request.resource.data.custoUnitario >= 0;
+      allow delete: if false;
+
+      match /historico/{hid} {
+        allow read: if ehAdmin();
+        allow create: if ehAdmin() && request.resource.data.precoEmbalagem is number;
+        allow update, delete: if false;
+      }
+    }
+
+    // Lotes: sócios e gerente criam (compra e ajuste). Qualquer perfil pode apenas DIMINUIR o saldo (baixa).
+    match /lotes/{id} {
+      allow read: if ativo();
+      allow create: if ehOperacional()
+        && request.resource.data.insumoId is string
+        && request.resource.data.qtdInicial is number
+        && request.resource.data.qtdInicial > 0
+        && request.resource.data.qtdAtual == request.resource.data.qtdInicial
+        && request.resource.data.criadoPor == request.auth.uid;
+      allow update: if (ehAdmin()
+            && request.resource.data.qtdAtual is number
+            && request.resource.data.qtdAtual >= 0)
+        || (ativo()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['qtdAtual'])
+            && request.resource.data.qtdAtual is number
+            && request.resource.data.qtdAtual >= 0
+            && request.resource.data.qtdAtual < resource.data.qtdAtual);
+      allow delete: if false;
+    }
+
+    // Movimentações: histórico que ninguém edita nem apaga. Funcionário só registra saídas.
+    match /movimentacoes/{id} {
+      allow read: if ehOperacional();
+      allow create: if ativo()
+        && request.resource.data.por == request.auth.uid
+        && request.resource.data.em == request.time
+        && request.resource.data.insumoId is string
+        && request.resource.data.delta is number
+        && request.resource.data.delta != 0
+        && ((ehOperacional() && request.resource.data.tipo in ['baixa', 'descarte', 'compra', 'ajuste', 'producao'])
+            || (request.resource.data.tipo in ['baixa', 'descarte'] && request.resource.data.delta < 0));
+      allow update, delete: if false;
+    }
+
+    // Compras: só sócios; não se edita nem se apaga (corrige-se por ajuste)
+    match /compras/{id} {
+      allow read: if ehAdmin();
+      allow create: if ehAdmin()
+        && request.resource.data.total is number
+        && request.resource.data.total > 0
+        && request.resource.data.itens is list
+        && request.resource.data.itens.size() > 0
+        && request.resource.data.itens.size() <= 50
+        && request.resource.data.criadoPor == request.auth.uid;
+      allow update, delete: if false;
     }
 
     // ---------- Tudo o que não foi liberado acima fica bloqueado ----------
