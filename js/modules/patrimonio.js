@@ -25,7 +25,7 @@ export async function render(el, { perfil }) {
   const f = { q: "", estado: "", situacao: "", local: "" };
 
   el.innerHTML = `<div id="raiz">
-    <div class="flex flex-wrap items-center gap-2 mb-4">
+    <div class="flex flex-wrap items-center gap-3 mb-4">
       <input id="busca" class="input" style="width:12rem;margin:0" placeholder="Buscar bem...">
       <select id="fest" class="input" style="width:auto;margin:0"><option value="">Todos os estados</option>${opcoes(ESTADOS)}</select>
       <select id="fsit" class="input" style="width:auto;margin:0"><option value="">Todas as situações</option>${opcoes(SITUACOES)}</select>
@@ -34,13 +34,13 @@ export async function render(el, { perfil }) {
       <button id="csv" class="btn-alt">Exportar CSV</button>
       <button id="novo" class="btn">Novo bem</button>
     </div>
-    <div id="kpis" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4"></div>
+    <div id="kpis" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4"></div>
     <div id="lista"></div>
 
-    <dialog id="dF"><form id="fF" class="space-y-3">
+    <dialog id="dF"><form id="fF" class="space-y-4">
       <h2 class="h2" id="tF"></h2>
       <label>Nome do bem<input name="nome" required maxlength="120" class="input" placeholder="Ex.: Geladeira vertical 2 portas"></label>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-2 gap-4">
         <label>Marca / modelo<input name="marca" maxlength="120" class="input"></label>
         <label>Quantidade<input name="quantidade" type="number" min="1" value="1" required class="input"></label>
         <label>Estado de conservação<select name="estado" class="input">${opcoes(ESTADOS, "bom")}</select></label>
@@ -48,8 +48,8 @@ export async function render(el, { perfil }) {
         <label>Localização<input name="localizacao" maxlength="80" class="input" placeholder="Cozinha, salão..."></label>
         <label>Origem<select name="origem" class="input">${opcoes(ORIGENS, "imovel")}</select></label>
       </div>
-      <p class="text-xs text-off/60">Os valores abaixo são <b>por unidade</b>.</p>
-      <div class="grid grid-cols-2 gap-3">
+      <p class="text-xs text-ink/70">Os valores abaixo são <b>por unidade</b>.</p>
+      <div class="grid grid-cols-2 gap-4">
         <label>Valor de mercado (R$)<input name="valorMercado" inputmode="decimal" class="input" placeholder="2.800,00"></label>
         <label>Valor de aquisição (R$), se souber<input name="valorAquisicao" inputmode="decimal" class="input"></label>
         <label>Valor atribuído ao inventário (R$)<input name="valorAtribuido" inputmode="decimal" class="input" placeholder="2.000,00"></label>
@@ -57,19 +57,19 @@ export async function render(el, { perfil }) {
       </div>
       <label>Fotos (links do Google Drive, um por linha, até 10)<textarea name="fotos" rows="3" class="input" placeholder="https://drive.google.com/file/d/..."></textarea></label>
       <label>Observações<textarea name="observacoes" rows="2" maxlength="500" class="input"></textarea></label>
-      <div class="flex gap-2 justify-end"><button type="button" data-fechar="dF" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
+      <div class="flex gap-3 justify-end"><button type="button" data-fechar="dF" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
     </form></dialog>
 
     <dialog id="dD" style="max-width:44rem"></dialog>
 
-    <dialog id="dM"><form id="fM" class="space-y-3">
+    <dialog id="dM"><form id="fM" class="space-y-4">
       <h2 class="h2">Registrar manutenção</h2>
       <label>O que foi feito<input name="texto" required maxlength="200" class="input"></label>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-2 gap-4">
         <label>Custo (R$), opcional<input name="custo" inputmode="decimal" class="input"></label>
         <label>Data<input name="data" type="date" class="input"></label>
       </div>
-      <div class="flex gap-2 justify-end"><button type="button" data-fechar="dM" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
+      <div class="flex gap-3 justify-end"><button type="button" data-fechar="dM" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
     </form></dialog>
   </div>`;
 
@@ -96,7 +96,7 @@ export async function render(el, { perfil }) {
     const merc = lista.reduce((s, b) => s + b.valorMercado * b.quantidade, 0);
     const atrib = lista.reduce((s, b) => s + b.valorAtribuido * b.quantidade, 0);
     const ruins = lista.filter((b) => b.estado === "ruim").length;
-    const kpi = (r, v, d = "") => `<div class="card"><div class="text-off/60 text-sm">${r}</div><div class="text-3xl font-extrabold mt-1">${v}</div>${d ? `<div class="text-xs text-off/50 mt-1">${d}</div>` : ""}</div>`;
+    const kpi = (r, v, d = "") => `<div class="card"><div class="text-ink/70 text-sm">${r}</div><div class="num mt-1">${v}</div>${d ? `<div class="text-xs text-ink/70 mt-1">${d}</div>` : ""}</div>`;
     raiz.querySelector("#kpis").innerHTML =
       kpi("Bens cadastrados", lista.length, `${itens} unidades`) + kpi("Valor de mercado", brl(merc)) +
       kpi("Valor atribuído ao inventário", brl(atrib)) + kpi("Em estado ruim", ruins);
@@ -106,7 +106,7 @@ export async function render(el, { perfil }) {
       : `<div class="card overflow-x-auto"><table>
         <tr><th>Bem</th><th>Qtd.</th><th>Estado</th><th>Situação</th><th>Local</th><th>Mercado</th><th>Atribuído</th><th>Fotos</th><th></th></tr>
         ${lista.map((b) => `<tr>
-          <td><b>${esc(b.nome)}</b>${b.marca ? `<br><small class="text-off/60">${esc(b.marca)}</small>` : ""}</td>
+          <td><b>${esc(b.nome)}</b>${b.marca ? `<br><small class="text-ink/70">${esc(b.marca)}</small>` : ""}</td>
           <td>${b.quantidade}</td><td>${tagEstado(b.estado)}</td>
           <td>${esc(SITUACOES[b.situacao] || b.situacao)}</td><td>${esc(b.localizacao) || "—"}</td>
           <td>${brl(b.valorMercado * b.quantidade)}</td><td>${brl(b.valorAtribuido * b.quantidade)}</td>
@@ -121,13 +121,13 @@ export async function render(el, { perfil }) {
     const fotos = (b.fotos || []).map((u, i) => {
       const m = miniatura(u);
       return `<a href="${esc(u)}" target="_blank" rel="noopener" class="block">${m
-        ? `<img src="${esc(m)}" alt="Foto ${i + 1} de ${esc(b.nome)}" referrerpolicy="no-referrer" class="rounded-lg w-full h-28 object-cover bg-white/5">`
-        : `<span class="underline text-brand text-sm">Abrir foto ${i + 1}</span>`}</a>`;
+        ? `<img src="${esc(m)}" alt="Foto ${i + 1} de ${esc(b.nome)}" referrerpolicy="no-referrer" class="rounded-lg w-full h-28 object-cover bg-ink/5">`
+        : `<span class="underline text-brand-dark text-sm">Abrir foto ${i + 1}</span>`}</a>`;
     }).join("");
     const hist = [...(b.historico || [])].reverse();
     dD.innerHTML = `
-      <div class="flex items-start gap-2 mb-2"><h2 class="h2 flex-1">${esc(b.nome)}</h2><button class="btn-alt" data-fechar="dD">Fechar</button></div>
-      <div class="flex flex-wrap gap-2 mb-3">${tagEstado(b.estado)}<span class="tag">${esc(SITUACOES[b.situacao] || b.situacao)}</span><span class="tag">${esc(ORIGENS[b.origem] || "")}</span></div>
+      <div class="flex items-start gap-3 mb-2"><h2 class="h2 flex-1">${esc(b.nome)}</h2><button class="btn-alt" data-fechar="dD">Fechar</button></div>
+      <div class="flex flex-wrap gap-3 mb-3">${tagEstado(b.estado)}<span class="tag">${esc(SITUACOES[b.situacao] || b.situacao)}</span><span class="tag">${esc(ORIGENS[b.origem] || "")}</span></div>
       <table>
         <tr><th>Marca / modelo</th><td>${esc(b.marca) || "—"}</td></tr>
         <tr><th>Quantidade</th><td>${b.quantidade}</td></tr>
@@ -139,10 +139,10 @@ export async function render(el, { perfil }) {
         <tr><th>Levantado por</th><td>${esc(b.levantadoPor)}</td></tr>
         ${b.observacoes ? `<tr><th>Observações</th><td>${esc(b.observacoes)}</td></tr>` : ""}
       </table>
-      ${fotos ? `<h3 class="h2 mt-4 mb-2">Fotos</h3><div class="grid grid-cols-3 gap-2">${fotos}</div>` : ""}
+      ${fotos ? `<h3 class="h2 mt-4 mb-2">Fotos</h3><div class="grid grid-cols-3 gap-3">${fotos}</div>` : ""}
       <h3 class="h2 mt-4 mb-2">Histórico</h3>
-      <ul class="space-y-1 text-sm">${hist.map((h) => `<li><span class="tag">${fmtDia(h.em)}</span> ${esc(h.texto)}${h.custo != null ? ` · ${brl(h.custo)}` : ""} <span class="text-off/50">· ${esc(h.por)}</span></li>`).join("") || "<li>Sem registros.</li>"}</ul>
-      <div class="flex flex-wrap gap-2 mt-4">
+      <ul class="space-y-1 text-sm">${hist.map((h) => `<li><span class="tag">${fmtDia(h.em)}</span> ${esc(h.texto)}${h.custo != null ? ` · ${brl(h.custo)}` : ""} <span class="text-ink/70">· ${esc(h.por)}</span></li>`).join("") || "<li>Sem registros.</li>"}</ul>
+      <div class="flex flex-wrap gap-3 mt-4">
         <button class="btn" data-act="man" data-id="${b.id}">Registrar manutenção</button>
         <button class="btn-alt" data-act="ed" data-id="${b.id}">Editar</button>
         <button class="btn-alt" data-act="del" data-id="${b.id}">Excluir</button>
@@ -195,7 +195,7 @@ export async function render(el, { perfil }) {
   raiz.addEventListener("error", (e) => {
     if (e.target.tagName === "IMG") {
       const s = document.createElement("span");
-      s.className = "underline text-brand text-sm"; s.textContent = "Abrir foto";
+      s.className = "underline text-brand-dark text-sm"; s.textContent = "Abrir foto";
       e.target.replaceWith(s);
     }
   }, true);

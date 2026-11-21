@@ -4,22 +4,22 @@ import { resumo } from "../core/financas.js";
 import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const kpi = (rotulo, valor, dica = "") =>
-  `<div class="card"><div class="text-off/60 text-sm">${rotulo}</div>
-   <div class="text-3xl font-extrabold mt-1">${valor}</div>
-   ${dica ? `<div class="text-xs text-off/50 mt-1">${dica}</div>` : ""}</div>`;
+  `<div class="card"><div class="text-ink/70 text-sm">${rotulo}</div>
+   <div class="num mt-1">${valor}</div>
+   ${dica ? `<div class="text-xs text-ink/70 mt-1">${dica}</div>` : ""}</div>`;
 
 export async function render(el, { perfil }) {
   const admin = perfil.papel === "admin";
   const topo = `<div class="card mb-4"><h2 class="h2">Olá, ${esc(perfil.nome.split(" ")[0])}!</h2>
-    <p class="text-off/70 mt-1">Você entrou como <b>${esc(PAPEIS[perfil.papel] || perfil.papel)}</b>.</p></div>`;
+    <p class="text-ink/70 mt-1">Você entrou como <b>${esc(PAPEIS[perfil.papel] || perfil.papel)}</b>.</p></div>`;
 
   if (perfil.papel === "funcionario") {
     el.innerHTML = topo + `<div class="card"><h2 class="h2">Em breve</h2>
-      <p class="text-off/70 mt-1">Aqui vão aparecer seus avisos, o manual do funcionário e o ponto.</p></div>`;
+      <p class="text-ink/70 mt-1">Aqui vão aparecer seus avisos, o manual do funcionário e o ponto.</p></div>`;
     return;
   }
 
-  el.innerHTML = topo + `<p class="text-off/60">Carregando indicadores…</p>`;
+  el.innerHTML = topo + `<p class="text-ink/70">Carregando indicadores…</p>`;
   const pegar = async (n) => (await getDocs(collection(db, n))).docs.map((d) => ({ id: d.id, ...d.data() }));
   let tar = [], forn = [], orc = [], pat = [], lan = [], reemb = [], cfg = {};
   try {
@@ -56,7 +56,7 @@ export async function render(el, { perfil }) {
   }
 
   el.innerHTML = topo + `
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
       ${kpi("Tarefas em aberto", abertas.length)}
       ${kpi("Em andamento", andamento.length)}
       ${kpi("Atrasadas", atrasadas.length, atrasadas.length ? "passaram do prazo" : "tudo em dia")}
@@ -65,15 +65,15 @@ export async function render(el, { perfil }) {
     </div>
     <div class="grid gap-4 lg:grid-cols-2">
       <div class="card"><h2 class="h2 mb-2">Implantação</h2>
-        <div class="h-3 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-brand" style="width:${pct}%"></div></div>
-        <p class="text-sm text-off/70 mt-2">${pct}% concluído (${impl.filter((t) => t.status === "concluido").length} de ${impl.length} tarefas)</p>
+        <div class="h-3 rounded-full bg-ink/10 overflow-hidden"><div class="h-full bg-brand" style="width:${pct}%"></div></div>
+        <p class="text-sm text-ink/70 mt-2">${pct}% concluído (${impl.filter((t) => t.status === "concluido").length} de ${impl.length} tarefas)</p>
       </div>
       <div class="card"><h2 class="h2 mb-2">Próximos prazos</h2>
-        ${proximas.length ? `<ul class="space-y-1">${proximas.map((t) => `<li class="flex gap-2">
+        ${proximas.length ? `<ul class="space-y-1">${proximas.map((t) => `<li class="flex gap-3">
           <span class="tag ${t.prazo < hoje ? "bad" : ""}">${fmtDia(t.prazo)}</span><span>${esc(t.titulo)}</span>
-          <span class="text-off/50 text-sm">· ${esc(t.responsavel)}</span></li>`).join("")}</ul>`
-          : '<p class="text-off/60">Nenhuma tarefa com prazo.</p>'}
-        <a class="underline text-brand text-sm mt-3 inline-block" href="#/tarefas">Abrir tarefas</a>
+          <span class="text-ink/70 text-sm">· ${esc(t.responsavel)}</span></li>`).join("")}</ul>`
+          : '<p class="text-ink/70">Nenhuma tarefa com prazo.</p>'}
+        <a class="underline text-brand-dark text-sm mt-3 inline-block" href="#/tarefas">Abrir tarefas</a>
       </div>
     </div>
 `;

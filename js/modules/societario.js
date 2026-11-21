@@ -21,7 +21,7 @@ export async function render(el, { perfil }) {
   let lancs = [], reembs = [], cfg = {}, logs = [], aba = "conta";
 
   el.innerHTML = `<div id="raiz">
-    <div class="flex flex-wrap items-center gap-2 mb-4">
+    <div class="flex flex-wrap items-center gap-3 mb-4">
       <button class="btn-alt" data-aba="conta">Conta corrente</button>
       <button class="btn-alt" data-aba="reemb">Reembolsos</button>
       <button class="btn-alt" data-aba="hist">Histórico de alterações</button>
@@ -29,13 +29,13 @@ export async function render(el, { perfil }) {
       <button id="novo" class="btn">Solicitar reembolso</button>
     </div>
     <div id="corpo"></div>
-    <dialog id="dR"><form id="fR" class="space-y-3">
+    <dialog id="dR"><form id="fR" class="space-y-4">
       <h2 class="h2">Solicitar reembolso</h2>
       <label>Sócio que vai receber<select name="socioId" class="input">${socios.map((s) => `<option value="${s.uid}" ${s.uid === eu ? "selected" : ""}>${esc(s.nome)}</option>`).join("")}</select></label>
       <label>Valor (R$)<input name="valor" required inputmode="decimal" class="input"></label>
       <label>Motivo<input name="motivo" required maxlength="200" class="input" placeholder="Ex.: devolução parcial do empréstimo"></label>
-      <p class="text-xs text-off/60">Sua solicitação já conta como a sua aprovação. O outro sócio precisa aprovar separadamente, e o pagamento só é registrado se houver saldo em caixa.</p>
-      <div class="flex gap-2 justify-end"><button type="button" id="cancelarR" class="btn-alt">Cancelar</button><button class="btn">Enviar solicitação</button></div>
+      <p class="text-xs text-ink/70">Sua solicitação já conta como a sua aprovação. O outro sócio precisa aprovar separadamente, e o pagamento só é registrado se houver saldo em caixa.</p>
+      <div class="flex gap-3 justify-end"><button type="button" id="cancelarR" class="btn-alt">Cancelar</button><button class="btn">Enviar solicitação</button></div>
     </form></dialog>
   </div>`;
 
@@ -51,7 +51,7 @@ export async function render(el, { perfil }) {
 
   function vConta() {
     const g = fin();
-    return `<p class="mb-4 text-off/70">Saldo em caixa da empresa: <b>${brl(g.caixa)}</b></p>
+    return `<p class="mb-4 text-ink/70">Saldo em caixa da empresa: <b>${brl(g.caixa)}</b></p>
       <div class="grid gap-4 lg:grid-cols-2">${socios.map((s) => {
         const x = g.soc[s.uid] || { emprestado: 0, despesasPagas: 0, reembolsado: 0, saldo: 0 };
         const mov = lancs.filter((l) => l.socioId === s.uid && ROTULO[l.tipo])
@@ -59,12 +59,12 @@ export async function render(el, { perfil }) {
         let acc = 0;
         const linhas = mov.map((l) => { acc = r2(acc + (l.tipo === "reembolso" ? -l.valor : l.valor)); return { l, acc }; }).reverse();
         return `<div class="card overflow-x-auto"><h2 class="h2">${esc(s.nome)}</h2>
-          <p class="text-off/60 text-sm">Saldo que a empresa deve devolver (empréstimo sem juros)</p>
-          <p class="text-3xl font-extrabold my-1">${brl(x.saldo)}</p>
-          <p class="text-sm text-off/70 mb-3">Emprestou ${brl(x.emprestado)} · Despesas do bolso ${brl(x.despesasPagas)} · Reembolsado ${brl(x.reembolsado)}</p>
+          <p class="text-ink/70 text-sm">Saldo que a empresa deve devolver (empréstimo sem juros)</p>
+          <p class="num my-1">${brl(x.saldo)}</p>
+          <p class="text-sm text-ink/70 mb-3">Emprestou ${brl(x.emprestado)} · Despesas do bolso ${brl(x.despesasPagas)} · Reembolsado ${brl(x.reembolsado)}</p>
           <table><tr><th>Data</th><th>Movimento</th><th>Valor</th><th>Saldo</th></tr>
-          ${linhas.map(({ l, acc: sd }) => `<tr><td>${fmtDia(l.data)}</td><td>${ROTULO[l.tipo]}<br><small class="text-off/60">${esc(l.descricao)}</small></td>
-            <td style="color:${l.tipo === "reembolso" ? "#ffb067" : "#5fc08a"}">${l.tipo === "reembolso" ? "−" : "+"} ${brl(l.valor)}</td><td>${brl(sd)}</td></tr>`).join("") || '<tr><td colspan="4">Sem movimentos.</td></tr>'}
+          ${linhas.map(({ l, acc: sd }) => `<tr><td>${fmtDia(l.data)}</td><td>${ROTULO[l.tipo]}<br><small class="text-ink/70">${esc(l.descricao)}</small></td>
+            <td style="color:${l.tipo === "reembolso" ? "#B8470B" : "#1d7a46"}">${l.tipo === "reembolso" ? "−" : "+"} ${brl(l.valor)}</td><td>${brl(sd)}</td></tr>`).join("") || '<tr><td colspan="4">Sem movimentos.</td></tr>'}
           </table></div>`;
       }).join("")}</div>`;
   }
@@ -76,11 +76,11 @@ export async function render(el, { perfil }) {
       const aprov = r.aprovacoes || {};
       const aberto = r.status === "pendente" || r.status === "aprovado";
       return `<div class="card mb-3">
-        <div class="flex items-center gap-2"><h3 class="h2 flex-1">${brl(r.valor)} para ${esc(r.socioNome)}</h3><span class="tag ${cls}">${rot}</span></div>
+        <div class="flex items-center gap-3"><h3 class="h2 flex-1">${brl(r.valor)} para ${esc(r.socioNome)}</h3><span class="tag ${cls}">${rot}</span></div>
         <p class="my-1">${esc(r.motivo)}</p>
-        <p class="text-xs text-off/60">Solicitado por ${esc(r.solicitadoPorNome)} em ${fmtData(r.criadoEm)}</p>
-        <div class="flex flex-wrap gap-2 mt-2">${socios.map((s) => `<span class="tag ${aprov[s.uid] ? "ok" : ""}">${esc(s.nome)}: ${aprov[s.uid] ? "aprovou" : "pendente"}</span>`).join("")}</div>
-        <div class="flex flex-wrap gap-2 mt-3">
+        <p class="text-xs text-ink/70">Solicitado por ${esc(r.solicitadoPorNome)} em ${fmtData(r.criadoEm)}</p>
+        <div class="flex flex-wrap gap-3 mt-2">${socios.map((s) => `<span class="tag ${aprov[s.uid] ? "ok" : ""}">${esc(s.nome)}: ${aprov[s.uid] ? "aprovou" : "pendente"}</span>`).join("")}</div>
+        <div class="flex flex-wrap gap-3 mt-3">
           ${r.status === "pendente" && !aprov[eu] ? `<button class="btn" data-act="aprovar" data-id="${r.id}">Aprovar</button>` : ""}
           ${r.status === "aprovado" ? `<button class="btn" data-act="pagar" data-id="${r.id}">Registrar pagamento</button>` : ""}
           ${aberto ? `<button class="btn-alt" data-act="recusar" data-id="${r.id}">Recusar</button>` : ""}
@@ -91,7 +91,7 @@ export async function render(el, { perfil }) {
   function vHist() {
     return `<div class="card overflow-x-auto"><table><tr><th>Data e hora</th><th>Quem</th><th>Ação</th><th>Detalhe</th></tr>
       ${logs.map((l) => `<tr><td>${fmtData(l.em)}</td><td>${esc(l.nome)}</td><td>${esc(l.acao)}</td><td>${esc(l.detalhe)}</td></tr>`).join("") || '<tr><td colspan="4">Sem registros.</td></tr>'}
-    </table></div><p class="text-xs text-off/50 mt-2">Últimos 100 registros. Ninguém consegue editar ou apagar este histórico.</p>`;
+    </table></div><p class="text-xs text-ink/70 mt-2">Últimos 100 registros. Ninguém consegue editar ou apagar este histórico.</p>`;
   }
 
   raiz.addEventListener("click", async (e) => {

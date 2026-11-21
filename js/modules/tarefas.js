@@ -13,21 +13,21 @@ export async function render(el, { perfil }) {
   let tarefas = [], tipo = "todas", resp = "todos", editando = null;
 
   el.innerHTML = `<div id="raiz">
-    <div class="flex flex-wrap items-center gap-2 mb-4">
-      <div id="abas" class="flex gap-2 flex-wrap"></div>
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+      <div id="abas" class="flex gap-3 flex-wrap"></div>
       <select id="fresp" class="input" style="width:auto;margin:0">
         <option value="todos">Todos os responsáveis</option>${RESP.map((r) => `<option>${r}</option>`).join("")}
       </select>
       <span class="flex-1"></span>
       <button id="nova" class="btn">Nova tarefa</button>
     </div>
-    <div id="quadro" class="grid gap-4 md:grid-cols-3"></div>
+    <div id="quadro" class="kanban"></div>
     <dialog id="dlg">
-      <form id="form" class="space-y-3">
+      <form id="form" class="space-y-4">
         <h2 class="h2" id="tit"></h2>
         <label>Título<input name="titulo" required maxlength="200" class="input"></label>
         <label>Descrição<textarea name="descricao" rows="2" maxlength="500" class="input"></textarea></label>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-2 gap-4">
           <label>Responsável<select name="responsavel" class="input">${RESP.map((r) => `<option>${r}</option>`).join("")}</select></label>
           <label>Prazo<input name="prazo" type="date" class="input"></label>
         </div>
@@ -35,7 +35,7 @@ export async function render(el, { perfil }) {
           <option value="tarefa">Implantação / rotina</option>
           <option value="melhoria">Ponto a melhorar</option></select></label>
         <label>Etapas do checklist (uma por linha)<textarea name="etapas" rows="4" class="input"></textarea></label>
-        <div class="flex gap-2 justify-end">
+        <div class="flex gap-3 justify-end">
           <button type="button" id="cancelar" class="btn-alt">Cancelar</button>
           <button class="btn">Salvar</button>
         </div>
@@ -52,15 +52,15 @@ export async function render(el, { perfil }) {
     const atras = t.prazo && t.prazo < hoje && t.status !== "concluido";
     return `<article class="card mb-3">
       <p class="font-semibold">${esc(t.titulo)}</p>
-      ${t.descricao ? `<p class="text-sm text-off/70 mt-1">${esc(t.descricao)}</p>` : ""}
+      ${t.descricao ? `<p class="text-sm text-ink/70 mt-1">${esc(t.descricao)}</p>` : ""}
       <div class="flex flex-wrap gap-1 mt-2">
         <span class="tag">${esc(t.responsavel)}</span>
         ${t.tipo === "melhoria" ? '<span class="tag" style="background:#ffb067;color:#1c1c1c">Melhoria</span>' : ""}
         ${t.prazo ? `<span class="tag ${atras ? "bad" : ""}">${atras ? "Atrasada · " : "até "}${fmtDia(t.prazo)}</span>` : ""}
       </div>
-      ${ck.length ? `<div class="mt-2 text-sm text-off/70">${feitos}/${ck.length} etapas</div>
-        ${ck.map((c, i) => `<label class="flex gap-2 items-start text-sm" style="color:inherit"><input type="checkbox" class="mt-1" data-act="ck" data-id="${t.id}" data-i="${i}" ${c.feito ? "checked" : ""}><span>${esc(c.texto)}</span></label>`).join("")}` : ""}
-      <div class="flex flex-wrap gap-2 mt-3">
+      ${ck.length ? `<div class="mt-2 text-sm text-ink/70">${feitos}/${ck.length} etapas</div>
+        ${ck.map((c, i) => `<label class="flex gap-3 items-start text-sm" style="color:inherit"><input type="checkbox" class="mt-1" data-act="ck" data-id="${t.id}" data-i="${i}" ${c.feito ? "checked" : ""}><span>${esc(c.texto)}</span></label>`).join("")}` : ""}
+      <div class="flex flex-wrap gap-3 mt-3">
         ${ci > 0 ? `<button class="btn-alt" data-act="mv" data-d="-1" data-id="${t.id}">Voltar</button>` : ""}
         ${ci < 2 ? `<button class="btn-alt" data-act="mv" data-d="1" data-id="${t.id}">Avançar</button>` : ""}
         <button class="btn-alt" data-act="ed" data-id="${t.id}">Editar</button>
@@ -77,9 +77,9 @@ export async function render(el, { perfil }) {
       .sort((a, b) => (a.prazo || "9999").localeCompare(b.prazo || "9999"));
     raiz.querySelector("#quadro").innerHTML = COLS.map(([k, nome], ci) => {
       const col = vis.filter((t) => t.status === k);
-      return `<section class="rounded-2xl bg-white/5 p-3 min-h-[8rem]">
-        <h3 class="font-bold mb-2">${nome} <span class="text-off/50 text-sm">${col.length}</span></h3>
-        ${col.map((t) => cartao(t, ci, hoje)).join("") || '<p class="text-off/50 text-sm">Nada aqui.</p>'}
+      return `<section>
+        <h3 class="font-bold mb-2">${nome} <span class="text-ink/70 text-sm">${col.length}</span></h3>
+        ${col.map((t) => cartao(t, ci, hoje)).join("") || '<p class="text-ink/70 text-sm">Nada aqui.</p>'}
       </section>`;
     }).join("");
   }

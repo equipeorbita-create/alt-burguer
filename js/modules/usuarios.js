@@ -28,14 +28,14 @@ export async function render(el, { perfil }) {
 
   el.innerHTML = `
     <div class="grid gap-4 lg:grid-cols-3">
-      <form id="novo" class="card space-y-3 lg:col-span-1 self-start">
+      <form id="novo" class="card space-y-4 lg:col-span-1 self-start">
         <h2 class="h2">Novo usuário</h2>
         <label>Nome<input name="nome" required class="input"></label>
         <label>E-mail<input name="email" type="email" required class="input"></label>
         <label>Senha temporária<input name="senha" type="text" minlength="6" required class="input"></label>
         <label>Perfil<select name="papel" class="input">${opcoes("funcionario")}</select></label>
         <button class="btn w-full">Criar usuário</button>
-        <p class="text-xs text-off/60">Passe a senha à pessoa por um canal seguro. Ela pode trocar depois pelo link "Esqueci minha senha" na tela de login.</p>
+        <p class="text-xs text-ink/70">Passe a senha à pessoa por um canal seguro. Ela pode trocar depois pelo link "Esqueci minha senha" na tela de login.</p>
       </form>
       <div class="card lg:col-span-2 overflow-x-auto">
         <h2 class="h2 mb-2">Equipe</h2>
@@ -56,10 +56,10 @@ export async function render(el, { perfil }) {
         ${lista.map((u) => {
           const eu = u.id === auth.currentUser.uid;
           return `<tr>
-            <td><b>${esc(u.nome)}</b><br><small class="text-off/60">${esc(u.email)}</small></td>
-            <td><select class="input" style="margin:0;padding:4px 6px" data-act="papel" data-id="${u.id}" ${eu ? "disabled" : ""}>${opcoes(u.papel)}</select></td>
+            <td><b>${esc(u.nome)}</b><br><small class="text-ink/70">${esc(u.email)}</small></td>
+            <td><select class="input" style="margin:0;padding:8px 10px" data-act="papel" data-id="${u.id}" ${eu ? "disabled" : ""}>${opcoes(u.papel)}</select></td>
             <td><span class="tag ${u.ativo ? "ok" : "bad"}">${u.ativo ? "Ativo" : "Desativado"}</span></td>
-            <td class="text-off/60">${fmtData(u.criadoEm)}</td>
+            <td class="text-ink/70">${fmtData(u.criadoEm)}</td>
             <td class="whitespace-nowrap">
               <button class="btn-alt" data-act="toggle" data-id="${u.id}" ${eu ? "disabled" : ""}>${u.ativo ? "Desativar" : "Reativar"}</button>
               <button class="btn-alt" data-act="reset" data-id="${u.id}">Redefinir senha</button>

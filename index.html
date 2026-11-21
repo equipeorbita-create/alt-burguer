@@ -1,24 +1,33 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ALT BURGUER · Entrar</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#272928">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
-<script>tailwind.config = { theme: { extend: { colors: { charcoal: '#1c1c1c', panel: '#262626', off: '#f5f2ea', brand: '#ff6a13' } } } }</script>
+<script>tailwind.config = { theme: { extend: { colors: { ink: '#272928', paper: '#F4F1E6', brand: { DEFAULT: '#EA681D', dark: '#B8470B' } } } } }</script>
 <link rel="stylesheet" href="css/app.css">
 </head>
-<body class="bg-charcoal text-off min-h-screen flex items-center justify-center p-4">
-<main class="w-full max-w-sm">
-  <h1 class="text-4xl font-extrabold tracking-tight">ALT <span class="text-brand">BURGUER</span></h1>
-  <p class="text-off/60 mt-1 mb-6">Gestão interna</p>
-  <form id="f" class="card space-y-3">
-    <label>E-mail<input id="email" type="email" required autocomplete="username" class="input"></label>
+<body class="min-h-screen flex items-center justify-center p-5">
+<main class="w-full max-w-sm py-8">
+  <div class="mx-auto" style="width:220px;color:#272928"><svg class="logo " viewBox="0 0 200 146" role="img" aria-label="ALT BURGUER" fill="currentColor" font-family="Anton, Impact, 'Arial Narrow', sans-serif">
+  <text x="0" y="84" font-size="104" textLength="200" lengthAdjust="spacingAndGlyphs">ALT</text>
+  <text x="0" y="140" font-size="58" textLength="200" lengthAdjust="spacingAndGlyphs">BURGUER</text>
+</svg></div>
+  <p class="text-center mt-4 mb-8" style="font:400 1.1rem var(--display);letter-spacing:.22em;color:var(--orange-dark)">GESTÃO INTERNA</p>
+  <form id="f" class="card space-y-5">
+    <label>E-mail<input id="email" type="email" required autocomplete="username" inputmode="email" class="input"></label>
     <label>Senha<input id="senha" type="password" required autocomplete="current-password" class="input"></label>
-    <p id="erro" role="alert" class="text-red-400 text-sm min-h-[1.25rem]"></p>
+    <p id="erro" role="alert" class="text-sm font-semibold min-h-[1.25rem]" style="color:#9b1c10"></p>
     <button id="go" class="btn w-full">Entrar</button>
-    <button type="button" id="esqueci" class="text-sm underline text-off/70 w-full">Esqueci minha senha</button>
+    <button type="button" id="esqueci" class="w-full text-sm font-semibold underline" style="min-height:44px">Esqueci minha senha</button>
   </form>
+  <p class="text-center text-xs mt-6 text-ink/70">Acesso restrito à equipe ALT BURGUER</p>
 </main>
 
 <script type="module">
@@ -43,7 +52,7 @@ $("f").addEventListener("submit", async (e) => {
 
 $("esqueci").addEventListener("click", async () => {
   const email = $("email").value.trim();
-  if (!email) { $("erro").textContent = "Digite seu e-mail acima e clique de novo."; return; }
+  if (!email) { $("erro").textContent = "Digite seu e-mail acima e toque de novo."; return; }
   try {
     await recuperarSenha(email);
     $("erro").textContent = "Se o e-mail existir, enviamos um link para criar nova senha.";

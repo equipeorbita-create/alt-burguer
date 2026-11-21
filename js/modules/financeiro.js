@@ -21,7 +21,7 @@ export async function render(el, { perfil }) {
   const pct = (uid) => cfg.divisao?.[uid] ?? r2(100 / (socios.length || 1));
 
   el.innerHTML = `<div id="raiz">
-    <div class="flex flex-wrap items-center gap-2 mb-4 no-print">
+    <div class="flex flex-wrap items-center gap-3 mb-4 no-print">
       <button class="btn-alt" data-aba="resumo">Prestação de contas</button>
       <button class="btn-alt" data-aba="lanc">Lançamentos</button>
       <button class="btn-alt" data-aba="conf">Configurações</button>
@@ -30,10 +30,10 @@ export async function render(el, { perfil }) {
     </div>
     <div id="corpo"></div>
 
-    <dialog id="dL"><form id="fL" class="space-y-3">
+    <dialog id="dL"><form id="fL" class="space-y-4">
       <h2 class="h2" id="tL"></h2>
       <label>Tipo<select name="tipo" class="input">${Object.entries(TIPOS).filter(([k]) => k !== "reembolso").map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-2 gap-4">
         <label>Data<input name="data" type="date" required class="input"></label>
         <label>Valor (R$)<input name="valor" required inputmode="decimal" class="input" placeholder="1.200,00"></label>
       </div>
@@ -43,7 +43,7 @@ export async function render(el, { perfil }) {
       <label data-campo="canal">Canal<select name="canal" class="input"><option value="">—</option><option value="presencial">Presencial</option><option value="delivery">Delivery</option></select></label>
       <label>Comprovante (link opcional; ou envie pelo WhatsApp)<input name="comprovante" class="input" placeholder="https://..."></label>
       <label>Observações<textarea name="obs" rows="2" maxlength="300" class="input"></textarea></label>
-      <div class="flex gap-2 justify-end"><button type="button" id="cancelarL" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
+      <div class="flex gap-3 justify-end"><button type="button" id="cancelarL" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
     </form></dialog>
   </div>`;
 
@@ -51,7 +51,7 @@ export async function render(el, { perfil }) {
   const dL = raiz.querySelector("#dL"), fL = raiz.querySelector("#fL");
 
   const noPeriodo = (l) => (!filtro.de || l.data >= filtro.de) && (!filtro.ate || l.data <= filtro.ate);
-  const periodoHtml = () => `<div class="flex flex-wrap items-end gap-2 mb-4 no-print">
+  const periodoHtml = () => `<div class="flex flex-wrap items-end gap-3 mb-4 no-print">
     <label>De<input type="date" data-f="de" value="${filtro.de}" class="input" style="margin:0"></label>
     <label>Até<input type="date" data-f="ate" value="${filtro.ate}" class="input" style="margin:0"></label>
     <button class="btn-alt" data-act="limpar">Limpar</button>
@@ -66,7 +66,7 @@ export async function render(el, { perfil }) {
   function vResumo() {
     const g = resumo(lancs, cfg.caixaInicial || 0);
     const p = resumo(lancs.filter(noPeriodo), 0);
-    const kpi = (r, v, d = "") => `<div class="card"><div class="text-off/60 text-sm">${r}</div><div class="text-3xl font-extrabold mt-1">${v}</div>${d ? `<div class="text-xs text-off/50 mt-1">${d}</div>` : ""}</div>`;
+    const kpi = (r, v, d = "") => `<div class="card"><div class="text-ink/70 text-sm">${r}</div><div class="num mt-1">${v}</div>${d ? `<div class="text-xs text-ink/70 mt-1">${d}</div>` : ""}</div>`;
 
     const total = g.devedorTotal;
     const linhas = socios.map((s) => {
@@ -86,7 +86,7 @@ export async function render(el, { perfil }) {
     const max = cat[0]?.[1] || 1;
 
     return periodoHtml() + `
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-4">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-4">
         ${kpi("Saldo atual em caixa", brl(g.caixa), "considera todo o histórico")}
         ${kpi("Emprestado pelos sócios (a devolver)", brl(g.devedorTotal))}
         ${kpi("Entradas no período", brl(p.entradas))}
@@ -97,12 +97,12 @@ export async function render(el, { perfil }) {
       <div class="card mb-4 overflow-x-auto"><h2 class="h2 mb-2">Conta dos sócios</h2>
         <table><tr><th>Sócio</th><th>Participação</th><th>Emprestou</th><th>Despesas pagas do bolso</th><th>Reembolsado</th><th>Saldo a receber</th><th>Retiradas</th></tr>
         ${linhas.map(({ s, x }) => `<tr><td><b>${esc(s.nome)}</b></td><td>${pct(s.uid)}%</td><td>${brl(x.emprestado)}</td><td>${brl(x.despesasPagas)}</td><td>${brl(x.reembolsado)}</td><td><b>${brl(x.saldo)}</b></td><td>${brl(x.retiradas)}</td></tr>`).join("")}</table>
-        <p class="text-sm text-off/70 mt-3">${equilibrio}</p>
-        <p class="text-xs text-off/50 mt-1">Empréstimos dos sócios não são capital social nem distribuição de lucros.</p>
+        <p class="text-sm text-ink/70 mt-3">${equilibrio}</p>
+        <p class="text-xs text-ink/70 mt-1">Empréstimos dos sócios não são capital social nem distribuição de lucros.</p>
       </div>
       <div class="card"><h2 class="h2 mb-2">Despesas por categoria (período)</h2>
         ${cat.length ? cat.map(([c, v]) => `<div class="mb-2"><div class="flex justify-between text-sm"><span>${esc(c)}</span><span>${brl(v)}</span></div>
-          <div class="h-2 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-brand" style="width:${(v / max) * 100}%"></div></div></div>`).join("") : '<p class="text-off/60">Nenhuma despesa no período.</p>'}
+          <div class="h-2 rounded-full bg-ink/10 overflow-hidden"><div class="h-full bg-brand" style="width:${(v / max) * 100}%"></div></div></div>`).join("") : '<p class="text-ink/70">Nenhuma despesa no período.</p>'}
       </div>`;
   }
 
@@ -117,22 +117,22 @@ export async function render(el, { perfil }) {
     const sai = lista.filter((l) => !["entrada", "emprestimo"].includes(l.tipo)).reduce((s, l) => s + l.valor, 0);
     const cs = [...new Set(lancs.map((l) => l.categoria))].sort();
     return periodoHtml().replace('<span class="flex-1"></span>', "") + `
-      <div class="flex flex-wrap gap-2 mb-4 no-print">
+      <div class="flex flex-wrap gap-3 mb-4 no-print">
         <select data-f="tipo" class="input" style="width:auto;margin:0"><option value="">Todos os tipos</option>${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}" ${filtro.tipo === k ? "selected" : ""}>${v}</option>`).join("")}</select>
         <select data-f="cat" class="input" style="width:auto;margin:0"><option value="">Todas as categorias</option>${cs.map((c) => `<option ${filtro.cat === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
         <select data-f="socio" class="input" style="width:auto;margin:0"><option value="">Todos os sócios</option>${socios.map((s) => `<option value="${s.uid}" ${filtro.socio === s.uid ? "selected" : ""}>${esc(s.nome)}</option>`).join("")}</select>
         <button class="btn-alt" data-act="csv">Exportar CSV</button>
       </div>
-      <p class="text-sm text-off/70 mb-2">${lista.length} lançamentos · entradas ${brl(entra)} · saídas ${brl(sai)}</p>
+      <p class="text-sm text-ink/70 mb-2">${lista.length} lançamentos · entradas ${brl(entra)} · saídas ${brl(sai)}</p>
       <div class="card overflow-x-auto">${!lista.length ? "Nenhum lançamento encontrado." : `<table>
         <tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Quem</th><th>Valor</th><th class="no-print"></th></tr>
         ${lista.map((l) => {
           const mais = ["entrada", "emprestimo"].includes(l.tipo);
           return `<tr><td>${fmtDia(l.data)}</td><td>${tagTipo(l.tipo)}</td>
-            <td>${esc(l.descricao)}${l.obs ? `<br><small class="text-off/60">${esc(l.obs)}</small>` : ""}${l.comprovante ? ` <a class="underline text-brand text-sm" href="${esc(l.comprovante)}" target="_blank" rel="noopener">comprovante</a>` : ""}</td>
-            <td>${esc(l.categoria)}${l.canal ? `<br><small class="text-off/60">${l.canal}</small>` : ""}</td>
+            <td>${esc(l.descricao)}${l.obs ? `<br><small class="text-ink/70">${esc(l.obs)}</small>` : ""}${l.comprovante ? ` <a class="underline text-brand-dark text-sm" href="${esc(l.comprovante)}" target="_blank" rel="noopener">comprovante</a>` : ""}</td>
+            <td>${esc(l.categoria)}${l.canal ? `<br><small class="text-ink/70">${l.canal}</small>` : ""}</td>
             <td>${l.socioNome ? esc(l.socioNome) + (l.tipo === "despesa" ? " (do bolso)" : "") : "Caixa"}</td>
-            <td style="color:${mais ? "#5fc08a" : "inherit"}">${mais ? "+" : "−"} ${brl(l.valor)}</td>
+            <td style="color:${mais ? "#1d7a46" : "inherit"}">${mais ? "+" : "−"} ${brl(l.valor)}</td>
             <td class="whitespace-nowrap no-print">${l.tipo === "reembolso" ? "" : `<button class="btn-alt" data-act="ed" data-id="${l.id}">Editar</button> <button class="btn-alt" data-act="del" data-id="${l.id}">Excluir</button>`}</td></tr>`;
         }).join("")}</table>`}</div>`;
   }
@@ -141,15 +141,15 @@ export async function render(el, { perfil }) {
   function vConf() {
     const ordem = ["despesa", "entrada", "retirada"];
     return `<div class="grid gap-4 lg:grid-cols-2">
-      <form id="fCfg" class="card space-y-3 self-start"><h2 class="h2">Divisão societária e caixa inicial</h2>
+      <form id="fCfg" class="card space-y-4 self-start"><h2 class="h2">Divisão societária e caixa inicial</h2>
         ${socios.map((s) => `<label>${esc(s.nome)} (%)<input name="p_${s.uid}" type="number" min="0" max="100" step="0.01" value="${pct(s.uid)}" class="input"></label>`).join("")}
         <label>Caixa inicial (R$)<input name="caixaInicial" inputmode="decimal" value="${num(cfg.caixaInicial || 0)}" class="input"></label>
-        <p class="text-xs text-off/60">A divisão é só referência para o equilíbrio entre os sócios. Pode ser alterada quando vocês decidirem.</p>
+        <p class="text-xs text-ink/70">A divisão é só referência para o equilíbrio entre os sócios. Pode ser alterada quando vocês decidirem.</p>
         <button class="btn">Salvar</button></form>
       <div class="card"><h2 class="h2 mb-2">Categorias</h2>
-        <form id="fCat" class="flex gap-2 mb-3"><select name="tipo" class="input" style="width:auto;margin:0"><option value="despesa">Despesa</option><option value="entrada">Entrada</option><option value="retirada">Retirada</option></select>
+        <form id="fCat" class="flex gap-3 mb-3"><select name="tipo" class="input" style="width:auto;margin:0"><option value="despesa">Despesa</option><option value="entrada">Entrada</option><option value="retirada">Retirada</option></select>
           <input name="nome" required maxlength="60" class="input" style="margin:0" placeholder="Nova categoria"><button class="btn">Adicionar</button></form>
-        ${ordem.map((t) => `<h3 class="font-bold mt-2">${TIPOS[t]}</h3><div class="flex flex-wrap gap-2 mt-1">${cats.filter((c) => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome))
+        ${ordem.map((t) => `<h3 class="font-bold mt-2">${TIPOS[t]}</h3><div class="flex flex-wrap gap-3 mt-1">${cats.filter((c) => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome))
           .map((c) => `<span class="tag">${esc(c.nome)} <button data-act="delcat" data-id="${c.id}" aria-label="Remover ${esc(c.nome)}">×</button></span>`).join("")}</div>`).join("")}
       </div></div>`;
   }

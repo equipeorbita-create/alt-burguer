@@ -15,7 +15,7 @@ export async function render(el, { perfil }) {
   let forn = [], orc = [], aba = "forn", editF = null;
 
   el.innerHTML = `<div id="raiz">
-    <div class="flex flex-wrap items-center gap-2 mb-4">
+    <div class="flex flex-wrap items-center gap-3 mb-4">
       <button class="btn-alt" data-aba="forn">Fornecedores</button>
       <button class="btn-alt" data-aba="orc">Comparar orçamentos</button>
       <span class="flex-1"></span>
@@ -23,16 +23,16 @@ export async function render(el, { perfil }) {
     </div>
     <div id="corpo"></div>
 
-    <dialog id="dF"><form id="fF" class="space-y-3">
+    <dialog id="dF"><form id="fF" class="space-y-4">
       <h2 class="h2" id="tF"></h2>
       <label>Nome<input name="nome" required maxlength="120" class="input"></label>
       <label>Categoria<input name="categoria" maxlength="60" class="input" placeholder="Ex.: Carnes, Equipamentos, Embalagens"></label>
       <label>Telefone / WhatsApp<input name="telefone" maxlength="30" class="input" placeholder="(88) 99999-0000"></label>
       <label>Observações<textarea name="obs" rows="2" maxlength="500" class="input"></textarea></label>
-      <div class="flex gap-2 justify-end"><button type="button" data-fechar="dF" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
+      <div class="flex gap-3 justify-end"><button type="button" data-fechar="dF" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
     </form></dialog>
 
-    <dialog id="dO"><form id="fO" class="space-y-3">
+    <dialog id="dO"><form id="fO" class="space-y-4">
       <h2 class="h2">Novo orçamento</h2>
       <label>Item orçado<input name="item" required maxlength="120" list="itens" class="input" placeholder="Ex.: Chapa 80 cm a gás"></label>
       <datalist id="itens"></datalist>
@@ -40,7 +40,7 @@ export async function render(el, { perfil }) {
       <label>Valor (R$)<input name="valor" required inputmode="decimal" class="input" placeholder="4.200,00"></label>
       <label>Link da proposta (Google Drive, opcional)<input name="link" class="input" placeholder="https://..."></label>
       <label>Observações<textarea name="obs" rows="2" maxlength="300" class="input"></textarea></label>
-      <div class="flex gap-2 justify-end"><button type="button" data-fechar="dO" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
+      <div class="flex gap-3 justify-end"><button type="button" data-fechar="dO" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
     </form></dialog>
   </div>`;
 
@@ -60,9 +60,9 @@ export async function render(el, { perfil }) {
     return `<div class="card overflow-x-auto"><table>
       <tr><th>Fornecedor</th><th>Categoria</th><th>Contato</th><th></th></tr>
       ${lista.map((f) => `<tr>
-        <td><b>${esc(f.nome)}</b>${f.obs ? `<br><small class="text-off/60">${esc(f.obs)}</small>` : ""}</td>
+        <td><b>${esc(f.nome)}</b>${f.obs ? `<br><small class="text-ink/70">${esc(f.obs)}</small>` : ""}</td>
         <td>${esc(f.categoria)}</td>
-        <td>${f.telefone ? `<a class="underline text-brand" href="${wa(f.telefone)}" target="_blank" rel="noopener">${esc(f.telefone)}</a>` : "—"}</td>
+        <td>${f.telefone ? `<a class="underline text-brand-dark" href="${wa(f.telefone)}" target="_blank" rel="noopener">${esc(f.telefone)}</a>` : "—"}</td>
         <td class="whitespace-nowrap"><button class="btn-alt" data-act="edf" data-id="${f.id}">Editar</button>
           <button class="btn-alt" data-act="delf" data-id="${f.id}">Excluir</button></td></tr>`).join("")}
     </table></div>`;
@@ -73,20 +73,20 @@ export async function render(el, { perfil }) {
     orc.forEach((o) => { const k = chave(o.item); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(o); });
     const pend = [...grupos.values()].filter((g) => !g.some((o) => o.escolhido)).length;
     const total = orc.filter((o) => o.escolhido).reduce((s, o) => s + o.valor, 0);
-    const kpis = `<div class="grid gap-3 sm:grid-cols-3 mb-4">
-      <div class="card"><div class="text-off/60 text-sm">Itens orçados</div><div class="text-3xl font-extrabold">${grupos.size}</div></div>
-      <div class="card"><div class="text-off/60 text-sm">Aguardando escolha</div><div class="text-3xl font-extrabold">${pend}</div></div>
-      <div class="card"><div class="text-off/60 text-sm">Total dos escolhidos</div><div class="text-3xl font-extrabold">${brl(total)}</div></div></div>`;
+    const kpis = `<div class="grid gap-4 sm:grid-cols-3 mb-4">
+      <div class="card"><div class="text-ink/70 text-sm">Itens orçados</div><div class="num">${grupos.size}</div></div>
+      <div class="card"><div class="text-ink/70 text-sm">Aguardando escolha</div><div class="num">${pend}</div></div>
+      <div class="card"><div class="text-ink/70 text-sm">Total dos escolhidos</div><div class="num">${brl(total)}</div></div></div>`;
     if (!grupos.size) return kpis + `<div class="card">Nenhum orçamento lançado ainda.</div>`;
     return kpis + [...grupos.values()].map((g) => {
       const menor = Math.min(...g.map((o) => o.valor));
       const tem = g.some((o) => o.escolhido);
       return `<div class="card mb-3 overflow-x-auto">
-        <div class="flex items-center gap-2 mb-2"><h3 class="h2 flex-1">${esc(g[0].item)}</h3>${tem ? "" : '<span class="tag">Aguardando escolha</span>'}</div>
+        <div class="flex items-center gap-3 mb-2"><h3 class="h2 flex-1">${esc(g[0].item)}</h3>${tem ? "" : '<span class="tag">Aguardando escolha</span>'}</div>
         <table>${[...g].sort((a, b) => a.valor - b.valor).map((o) => `<tr>
-          <td><b>${esc(o.fornecedorNome)}</b>${o.obs ? `<br><small class="text-off/60">${esc(o.obs)}</small>` : ""}</td>
+          <td><b>${esc(o.fornecedorNome)}</b>${o.obs ? `<br><small class="text-ink/70">${esc(o.obs)}</small>` : ""}</td>
           <td>${brl(o.valor)} ${o.valor === menor ? '<span class="tag ok">Menor preço</span>' : ""} ${o.escolhido ? '<span class="tag ok">Escolhido</span>' : ""}</td>
-          <td>${o.link ? `<a class="underline text-brand" href="${esc(o.link)}" target="_blank" rel="noopener">Proposta</a>` : ""}</td>
+          <td>${o.link ? `<a class="underline text-brand-dark" href="${esc(o.link)}" target="_blank" rel="noopener">Proposta</a>` : ""}</td>
           <td class="whitespace-nowrap"><button class="btn-alt" data-act="esc" data-id="${o.id}">${o.escolhido ? "Desfazer" : "Escolher"}</button>
             <button class="btn-alt" data-act="delo" data-id="${o.id}">Excluir</button></td></tr>`).join("")}</table></div>`;
     }).join("");
