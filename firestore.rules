@@ -45,6 +45,17 @@ service cloud.firestore {
         && d.get('eans', []) is list && d.get('eans', []).size() <= 5;
     }
 
+    function receitaValida() {
+      let d = request.resource.data;
+      return d.nome is string && d.nome.size() > 0 && d.nome.size() <= 120
+        && d.tipo in ['preparo', 'prato']
+        && d.unidade in ['g', 'ml', 'un']
+        && d.rendimento is number && d.rendimento > 0
+        && d.ingredientes is list && d.ingredientes.size() <= 40
+        && d.pop is map
+        && d.ativo is bool;
+    }
+
     // ---------- Usuários ----------
     // O primeiro sócio é criado manualmente no console (veja o README).
     match /usuarios/{uid} {
@@ -304,6 +315,25 @@ service cloud.firestore {
         && request.resource.data.itens.size() <= 50
         && request.resource.data.criadoPor == request.auth.uid;
       allow update, delete: if false;
+    }
+
+    // ---------- Fase 6: cardápio, fichas técnicas e POPs ----------
+    // Fichas (pesagens e passo a passo): todos leem. Sócios e gerente editam. Só sócios excluem.
+    match /receitas/{id} {
+      allow read: if ativo();
+      allow create: if ehOperacional() && receitaValida();
+      allow update: if ehOperacional() && receitaValida()
+        && request.resource.data.tipo == resource.data.tipo;
+      allow delete: if ehAdmin();
+    }
+
+    // Preço de venda e meta de CMV: SÓ sócios (o custo também só é calculável por quem lê os preços dos insumos)
+    match /receitas_precos/{id} {
+      allow read: if ehAdmin();
+      allow create, update: if ehAdmin()
+        && request.resource.data.precoVenda is number
+        && request.resource.data.precoVenda >= 0;
+      allow delete: if ehAdmin();
     }
 
     // ---------- Tudo o que não foi liberado acima fica bloqueado ----------
