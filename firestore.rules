@@ -56,11 +56,35 @@ service cloud.firestore {
         && d.ativo is bool;
     }
 
+    function registroPath(uid, rid) {
+      return /databases/$(database)/documents/ponto/$(uid)/registros/$(rid);
+    }
+    function ajustePath(id) {
+      return /databases/$(database)/documents/ajustes_ponto/$(id);
+    }
+    function comunicadoValido() {
+      let d = request.resource.data;
+      return d.tipo in ['alerta', 'noticia']
+        && d.titulo is string && d.titulo.size() > 0 && d.titulo.size() <= 120
+        && d.texto is string && d.texto.size() <= 2000
+        && d.ativo is bool
+        && d.cientes is list && d.cientes.size() <= 100
+        && (d.tipo != 'alerta' || d.nivel in ['urgente', 'aviso']);
+    }
+    // qualquer pessoa pode apenas ADICIONAR o próprio nome à lista de "cientes"
+    function cienteApenas() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cientes'])
+        && request.resource.data.cientes.hasAll(resource.data.cientes)
+        && request.resource.data.cientes.size() == resource.data.cientes.size() + 1
+        && request.auth.uid in request.resource.data.cientes;
+    }
+
     // ---------- Usuários ----------
     // O primeiro sócio é criado manualmente no console (veja o README).
     match /usuarios/{uid} {
       // Cada pessoa lê o próprio perfil; sócios leem todos.
       allow read: if logado() && (request.auth.uid == uid || ehAdmin());
+      allow read: if ehGerente() && resource.data.papel == 'funcionario';
 
       allow create: if ehAdmin()
         && papelValido(request.resource.data.papel)
@@ -334,6 +358,78 @@ service cloud.firestore {
         && request.resource.data.precoVenda is number
         && request.resource.data.precoVenda >= 0;
       allow delete: if ehAdmin();
+    }
+
+    // ---------- Fase 7: portal, ponto, equipe ----------
+    match /comunicados/{id} {
+      allow read: if ativo();
+      allow create: if ehOperacional() && comunicadoValido();
+      allow update: if (ehOperacional() && comunicadoValido()) || (ativo() && cienteApenas());
+      allow delete: if ehAdmin();
+    }
+
+    match /manual/{id} {
+      allow read: if ativo();
+      allow create, update: if ehOperacional()
+        && request.resource.data.titulo is string && request.resource.data.titulo.size() > 0 && request.resource.data.titulo.size() <= 120
+        && request.resource.data.texto is string && request.resource.data.texto.size() <= 5000
+        && request.resource.data.ordem is number;
+      allow delete: if ehAdmin();
+    }
+
+    match /funcionarios/{uid} {
+      allow read: if ehOperacional() || (ativo() && request.auth.uid == uid);
+      allow create, update: if ehAdmin();
+      allow delete: if false;
+    }
+
+    // Ponto: cada pessoa registra o PRÓPRIO ponto, sempre com a hora do servidor (não dá para adulterar pelo celular).
+    // Ninguém edita nem apaga registros. Esquecimentos entram por ajuste aprovado por outra pessoa.
+    match /ponto/{uid}/registros/{id} {
+      allow read: if ativo() && (request.auth.uid == uid || ehOperacional());
+      allow create: if ativo()
+        && request.resource.data.tipo in ['entrada', 'intervalo_inicio', 'intervalo_fim', 'saida']
+        && (
+          ( request.auth.uid == uid
+            && request.resource.data.origem == 'ponto'
+            && request.resource.data.em == request.time )
+          ||
+          ( ehOperacional()
+            && request.resource.data.origem == 'ajuste'
+            && request.resource.data.ajusteId is string
+            && id == 'aj_' + request.resource.data.ajusteId
+            && request.resource.data.aprovadoPor == request.auth.uid
+            && get(ajustePath(request.resource.data.ajusteId)).data.status == 'pendente'
+            && getAfter(ajustePath(request.resource.data.ajusteId)).data.status == 'aprovado'
+            && get(ajustePath(request.resource.data.ajusteId)).data.uid == uid
+            && get(ajustePath(request.resource.data.ajusteId)).data.uid != request.auth.uid
+            && get(ajustePath(request.resource.data.ajusteId)).data.em == request.resource.data.em
+            && get(ajustePath(request.resource.data.ajusteId)).data.tipo == request.resource.data.tipo )
+        );
+      allow update, delete: if false;
+    }
+
+    match /ajustes_ponto/{id} {
+      allow read: if ativo() && (resource.data.uid == request.auth.uid || ehOperacional());
+      allow create: if ativo()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pendente'
+        && request.resource.data.tipo in ['entrada', 'intervalo_inicio', 'intervalo_fim', 'saida']
+        && request.resource.data.em is timestamp
+        && request.resource.data.em <= request.time
+        && request.resource.data.justificativa is string
+        && request.resource.data.justificativa.size() >= 3
+        && request.resource.data.justificativa.size() <= 200;
+      // quem aprova nunca é o próprio solicitante; aprovar exige lançar o registro junto
+      allow update: if ehOperacional()
+        && resource.data.status == 'pendente'
+        && resource.data.uid != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decididoPor', 'decididoPorNome', 'decididoEm'])
+        && request.resource.data.decididoPor == request.auth.uid
+        && ( request.resource.data.status == 'recusado'
+             || ( request.resource.data.status == 'aprovado'
+                  && existsAfter(registroPath(resource.data.uid, 'aj_' + id)) ) );
+      allow delete: if false;
     }
 
     // ---------- Tudo o que não foi liberado acima fica bloqueado ----------

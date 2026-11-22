@@ -1,13 +1,36 @@
 import { db } from "../firebase.js";
-import { esc, PAPEIS, hojeISO, fmtDia, brl } from "../util.js";
+import { esc, PAPEIS, hojeISO, fmtDia, brl, toast } from "../util.js";
 import { resumo } from "../core/financas.js";
 import { estoqueDe, diasAte } from "../core/estoque-calc.js";
-import { collection, getDocs, doc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc, query, where, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const kpi = (rotulo, valor, dica = "") =>
   `<div class="card"><div class="text-ink/70 text-sm">${rotulo}</div>
    <div class="num mt-1">${valor}</div>
    ${dica ? `<div class="text-xs text-ink/70 mt-1">${dica}</div>` : ""}</div>`;
+
+// Alertas que a pessoa ainda não confirmou ("Estou ciente")
+async function alertasPendentes(perfil) {
+  try {
+    const s = await getDocs(collection(db, "comunicados"));
+    return s.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.tipo === "alerta" && c.ativo !== false && !(c.cientes || []).includes(perfil.uid))
+      .sort((a, b) => (b.criadoEm?.seconds || 0) - (a.criadoEm?.seconds || 0));
+  } catch (e) { console.error(e); return []; }
+}
+const htmlAlertas = (l) => `<div id="alertasIni">${l.map((c) => `<div class="card mb-4" style="border-left:10px solid var(--orange)">
+  <div class="flex items-start gap-3"><h3 class="h2 flex-1">${esc(c.titulo)}</h3><span class="tag ${c.nivel === "urgente" ? "bad" : ""}">${c.nivel === "urgente" ? "Urgente" : "Aviso"}</span></div>
+  <p class="whitespace-pre-wrap mt-2">${esc(c.texto)}</p><button class="btn mt-3" data-ciente="${c.id}">Estou ciente</button></div>`).join("")}</div>`;
+function ligarAlertas(el, perfil) {
+  el.querySelector("#alertasIni")?.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-ciente]");
+    if (!b) return;
+    b.disabled = true;
+    try { await updateDoc(doc(db, "comunicados", b.dataset.ciente), { cientes: arrayUnion(perfil.uid) }); b.closest(".card").remove(); toast("Ciência registrada."); }
+    catch (err) { console.error(err); b.disabled = false; toast("Não foi possível registrar. Tente de novo."); }
+  });
+}
+const atalhos = `<div class="grid gap-4 sm:grid-cols-2"><a class="card block" href="#/portal"><h3 class="h2">Bater ponto</h3><p class="text-ink/70 mt-1">Entrada, intervalo e saída.</p></a>
+  <a class="card block" href="#/portal"><h3 class="h2">Manual e notícias</h3><p class="text-ink/70 mt-1">Regras da casa, avisos e comunicados.</p></a></div>`;
 
 export async function render(el, { perfil }) {
   const admin = perfil.papel === "admin";
@@ -15,8 +38,9 @@ export async function render(el, { perfil }) {
     <p class="text-ink/70 mt-1">Você entrou como <b>${esc(PAPEIS[perfil.papel] || perfil.papel)}</b>.</p></div>`;
 
   if (perfil.papel === "funcionario") {
-    el.innerHTML = topo + `<div class="card"><h2 class="h2">Em breve</h2>
-      <p class="text-ink/70 mt-1">Aqui vão aparecer seus avisos, o manual do funcionário e o ponto.</p></div>`;
+    const al = await alertasPendentes(perfil);
+    el.innerHTML = topo + htmlAlertas(al) + atalhos;
+    ligarAlertas(el, perfil);
     return;
   }
 
@@ -59,7 +83,8 @@ export async function render(el, { perfil }) {
             kpi("Patrimônio (valor atribuído)", brl(pat.reduce((t, b) => t + b.valorAtribuido * b.quantidade, 0)), `${pat.length} bens no inventário`);
   }
 
-  el.innerHTML = topo + `
+  const alGer = admin ? [] : await alertasPendentes(perfil);
+  el.innerHTML = topo + (admin ? "" : htmlAlertas(alGer)) + `
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
       ${kpi("Estoque abaixo do mínimo", baixos, baixos ? "veja em Estoque" : "tudo certo")}
       ${kpi("Lotes vencendo (7 dias)", vencendo, vencendo ? "use primeiro (PEPS)" : "nenhum")}
@@ -83,4 +108,5 @@ export async function render(el, { perfil }) {
       </div>
     </div>
 `;
+  ligarAlertas(el, perfil);
 }
