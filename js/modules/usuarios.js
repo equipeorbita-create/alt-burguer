@@ -63,6 +63,7 @@ export async function render(el, { perfil }) {
             <td class="whitespace-nowrap">
               <button class="btn-alt" data-act="toggle" data-id="${u.id}" ${eu ? "disabled" : ""}>${u.ativo ? "Desativar" : "Reativar"}</button>
               <button class="btn-alt" data-act="reset" data-id="${u.id}">Redefinir senha</button>
+              ${u.papel === "admin" ? "" : `<button class="btn-alt" data-act="conf" data-id="${u.id}" ${u.papel === "gerente" ? "disabled" : ""}>${u.papel === "gerente" || u.conferente ? "Conferente ✔" : "Tornar conferente"}</button>`}
             </td></tr>`;
         }).join("")}
       </table>`;
@@ -99,6 +100,11 @@ export async function render(el, { perfil }) {
         await updateDoc(doc(db, "usuarios", u.id), { ativo: !u.ativo });
         await auditar(perfil, u.ativo ? "usuario_desativado" : "usuario_reativado", u.nome);
         toast(u.ativo ? "Usuário desativado." : "Usuário reativado.");
+        await carregar();
+      } else if (b.dataset.act === "conf") {
+        await updateDoc(doc(db, "usuarios", u.id), { conferente: !u.conferente });
+        await auditar(perfil, u.conferente ? "conferente_removido" : "conferente_definido", u.nome);
+        toast(u.conferente ? "Deixou de conferir recebimentos." : "Agora confere os recebimentos do estoque.");
         await carregar();
       } else if (b.dataset.act === "reset") {
         await recuperarSenha(u.email);

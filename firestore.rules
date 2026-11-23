@@ -35,6 +35,28 @@ service cloud.firestore {
     function ehOperacional() {
       return ativo() && meuPerfil().papel in ['admin', 'gerente'];
     }
+    // quem pode conferir o que chegou nas compras: sócios, gerente e funcionários marcados como "conferente"
+    function podeConferir() {
+      return ativo() && (meuPerfil().papel in ['admin', 'gerente'] || meuPerfil().get('conferente', false) == true);
+    }
+    function tarefaValida() {
+      let d = request.resource.data;
+      return d.titulo is string && d.titulo.size() > 0 && d.titulo.size() <= 200
+        && d.status in ['a_fazer', 'andamento', 'concluido']
+        && d.tipo in ['tarefa', 'melhoria']
+        && d.checklist is list && d.checklist.size() <= 50
+        && d.responsaveis is list && d.responsaveis.size() <= 20;
+    }
+    function minhaTarefa() {
+      return request.auth.uid in resource.data.get('responsaveis', []);
+    }
+    // quem não é sócio só mexe no andamento: status e marcação das etapas (sem criar nem apagar etapas)
+    function andamentoApenas() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'checklist', 'atualizadoEm'])
+        && request.resource.data.status in ['a_fazer', 'andamento', 'concluido']
+        && request.resource.data.checklist is list
+        && request.resource.data.checklist.size() == resource.data.checklist.size();
+    }
     function insumoValido() {
       let d = request.resource.data;
       return d.nome is string && d.nome.size() > 0 && d.nome.size() <= 120
@@ -115,17 +137,11 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // ---------- Fase 2: tarefas (sócios e gerente) ----------
+    // ---------- Tarefas: cada pessoa lê só as suas; sócios leem, criam e apagam todas ----------
     match /tarefas/{id} {
-      allow read: if ehAdmin() || ehGerente();
-      allow create, update: if (ehAdmin() || ehGerente())
-        && request.resource.data.titulo is string
-        && request.resource.data.titulo.size() > 0
-        && request.resource.data.titulo.size() <= 200
-        && request.resource.data.status in ['a_fazer', 'andamento', 'concluido']
-        && request.resource.data.tipo in ['tarefa', 'melhoria']
-        && request.resource.data.checklist is list
-        && request.resource.data.checklist.size() <= 50;
+      allow read: if ehAdmin() || (ativo() && minhaTarefa());
+      allow create: if ehAdmin() && tarefaValida();
+      allow update: if (ehAdmin() && tarefaValida()) || (ativo() && minhaTarefa() && andamentoApenas());
       allow delete: if ehAdmin();
     }
 
@@ -310,7 +326,17 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['qtdAtual'])
             && request.resource.data.qtdAtual is number
             && request.resource.data.qtdAtual >= 0
-            && request.resource.data.qtdAtual < resource.data.qtdAtual);
+            && request.resource.data.qtdAtual < resource.data.qtdAtual)
+        // conferência do que chegou: ajusta a quantidade (só para menos), informa a validade e marca como conferido
+        || (podeConferir()
+            && resource.data.get('conferido', true) == false
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['qtdAtual', 'validade', 'conferido', 'conferidoPor'])
+            && request.resource.data.conferido == true
+            && request.resource.data.conferidoPor == request.auth.uid
+            && request.resource.data.qtdAtual is number
+            && request.resource.data.qtdAtual >= 0
+            && request.resource.data.qtdAtual <= resource.data.qtdAtual
+            && request.resource.data.validade is string);
       allow delete: if false;
     }
 
@@ -323,8 +349,8 @@ service cloud.firestore {
         && request.resource.data.insumoId is string
         && request.resource.data.delta is number
         && request.resource.data.delta != 0
-        && ((ehOperacional() && request.resource.data.tipo in ['baixa', 'descarte', 'compra', 'ajuste', 'producao'])
-            || (request.resource.data.tipo in ['baixa', 'descarte'] && request.resource.data.delta < 0));
+        && ((ehOperacional() && request.resource.data.tipo in ['baixa', 'descarte', 'compra', 'ajuste', 'producao', 'conferencia'])
+            || (request.resource.data.tipo in ['baixa', 'descarte', 'conferencia'] && request.resource.data.delta < 0));
       allow update, delete: if false;
     }
 
@@ -429,6 +455,76 @@ service cloud.firestore {
         && ( request.resource.data.status == 'recusado'
              || ( request.resource.data.status == 'aprovado'
                   && existsAfter(registroPath(resource.data.uid, 'aj_' + id)) ) );
+      allow delete: if false;
+    }
+
+    // ---------- Fase 8: recebimento, contagem, rotinas e prejuízos ----------
+    // Recebimento = conferência do que chegou numa compra. NÃO tem valores (quem confere não vê preços).
+    // Quem fez a compra não pode conferir a própria compra.
+    match /recebimentos/{id} {
+      allow read: if podeConferir();
+      allow create: if ehAdmin()
+        && request.resource.data.status == 'pendente'
+        && request.resource.data.itens is list
+        && request.resource.data.itens.size() > 0
+        && request.resource.data.itens.size() <= 50
+        && request.resource.data.criadoPor == request.auth.uid;
+      allow update: if podeConferir()
+        && resource.data.status == 'pendente'
+        && resource.data.criadoPor != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'conferencia'])
+        && request.resource.data.status in ['ok', 'divergencia']
+        && request.resource.data.conferencia.por == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Cada auditoria de estoque fica registrada (com a foto), mesmo quando a contagem confere
+    match /contagens/{id} {
+      allow read: if ehOperacional();
+      allow create: if ehOperacional()
+        && request.resource.data.por == request.auth.uid
+        && request.resource.data.em == request.time
+        && request.resource.data.insumoId is string
+        && request.resource.data.contado is number
+        && request.resource.data.contado >= 0;
+      allow update, delete: if false;
+    }
+
+    // Rotinas (checklists do dia e periódicas): só sócios definem; todos executam
+    match /rotinas/{id} {
+      allow read: if ativo();
+      allow create, update: if ehAdmin()
+        && request.resource.data.nome is string && request.resource.data.nome.size() > 0 && request.resource.data.nome.size() <= 120
+        && request.resource.data.itens is list && request.resource.data.itens.size() > 0 && request.resource.data.itens.size() <= 50
+        && request.resource.data.recorrencia is map
+        && request.resource.data.ativo is bool;
+      allow delete: if ehAdmin();
+    }
+    match /rotinas_exec/{id} {
+      allow read: if ativo();
+      allow create, update: if ativo()
+        && request.resource.data.rotinaId is string
+        && request.resource.data.data is string && request.resource.data.data.size() == 10
+        && request.resource.data.itens is list && request.resource.data.itens.size() <= 50
+        && request.resource.data.concluida is bool;
+      allow delete: if false;
+    }
+
+    // Prejuízos: cada pessoa vê os próprios relatos; sócios e gerente veem todos; só o sócio define o valor
+    match /prejuizos/{id} {
+      allow read: if ativo() && (resource.data.reportadoPor == request.auth.uid || ehOperacional());
+      allow create: if ativo()
+        && request.resource.data.reportadoPor == request.auth.uid
+        && request.resource.data.sem is bool
+        && request.resource.data.tipo is string
+        && request.resource.data.descricao is string && request.resource.data.descricao.size() <= 300
+        && request.resource.data.criadoEm == request.time
+        && (!('valor' in request.resource.data) || request.resource.data.valor == null);
+      allow update: if ehOperacional()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['valor', 'status', 'vistoPor', 'vistoPorNome'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['valor']) || ehAdmin())
+        && (!('valor' in request.resource.data) || request.resource.data.valor == null
+            || (request.resource.data.valor is number && request.resource.data.valor >= 0));
       allow delete: if false;
     }
 

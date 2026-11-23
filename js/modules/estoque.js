@@ -4,17 +4,20 @@ import { esc, toast, auditar, brl, parseBRL, hojeISO, fmtDia, fmtData } from "..
 import { r2, carregarSocios } from "../core/financas.js";
 import { r3, estoqueDe, ordemPEPS, baixarPEPS, ajustarContagem, parseQtd, numero, diasAte, MOTIVOS } from "../core/estoque.js";
 import { lerCodigo } from "../core/scanner.js";
+import { parseNFe, sugerirInsumo, embalagensDe, valorDaLinha, chaveForn } from "../core/nfe.js";
+import { tirarEEnviar, MSG_FOTO, driveConfigurado } from "../core/foto.js";
 import { soDigitos, gtinValido, candidatos, mesmoCodigo, paisGtin, consultarGTIN } from "../core/gtin.js";
 import { parseCSV, validarLinhas, MODELO_CSV } from "../core/importar.js";
 import { qrSvg, imprimirEtiquetas, htmlEtiqueta } from "../core/etiquetas.js";
 import {
-  collection, doc, onSnapshot, getDocs, query, where, orderBy, limit, writeBatch, serverTimestamp
+  collection, doc, onSnapshot, getDoc, getDocs, addDoc, query, where, orderBy, limit, writeBatch, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-const TIPO_MOV = { compra: "Compra", baixa: "Saída", descarte: "Descarte", ajuste: "Ajuste", producao: "Produção" };
+const TIPO_MOV = { compra: "Compra", baixa: "Saída", descarte: "Descarte", ajuste: "Ajuste", producao: "Produção", conferencia: "Conferência" };
 const fq = (n, u) => `${String(r3(n)).replace(".", ",")} ${u}`;
 const num = (n) => String(n ?? "").replace(".", ",");
 const ERROS = {
+  ...MSG_FOTO,
   SEM_ESTOQUE: "Não há estoque suficiente para essa quantidade.",
   ESTOQUE_MUDOU: "O estoque mudou enquanto você registrava. Confira a quantidade e tente de novo.",
   SCRIPT_FALHOU: "Não foi possível carregar o leitor. Verifique a internet e tente de novo."
@@ -24,17 +27,19 @@ const erro = (e) => { console.error(e); toast(ERROS[e.message] || traduzErro(e))
 export async function render(el, { perfil }) {
   const admin = perfil.papel === "admin";
   const operacional = admin || perfil.papel === "gerente";
+  const podeConferir = operacional || perfil.conferente === true;
   const socios = admin ? await carregarSocios() : [];
   const nomeSocio = (id) => (socios.find((s) => s.uid === id) || {}).nome || "";
 
   let insumos = [], lotes = [], custos = {}, movs = [];
+  let recebs = [], contagens = [], fotoContagem = null, fotoConf = null;
   let aba = operacional ? "insumos" : "baixa";
   const f = { q: "", cat: "", alerta: false, mq: "", mt: "" };
   const sel = { baixa: "", contagem: "" };
   let compra = { data: hojeISO(), local: "", pagoPor: "", lancar: true, itens: [] };
   let editando = null, recentes = [];
 
-  const ABAS = [["insumos", "Insumos"], ...(admin ? [["compra", "Compra rápida"]] : []), ["baixa", "Baixa"],
+  const ABAS = [["insumos", "Insumos"], ...(admin ? [["compra", "Compra rápida"]] : []), ["baixa", "Baixa"], ...(podeConferir ? [["receb", "Recebimentos"]] : []),
     ...(operacional ? [["contagem", "Contagem"], ["mov", "Movimentações"]] : [])];
 
   el.innerHTML = `<div id="raiz">
@@ -86,10 +91,10 @@ export async function render(el, { perfil }) {
   // ---------- montagem das abas (uma vez) e atualização dos dados (a cada mudança) ----------
   function montar() {
     raiz.querySelector("#abas").innerHTML = ABAS.map(([k, l]) => `<button class="btn-alt ${aba === k ? "on" : ""}" data-aba="${k}">${l}</button>`).join("");
-    corpo.innerHTML = ({ insumos: mInsumos, compra: mCompra, baixa: mBaixa, contagem: mContagem, mov: mMov }[aba])();
+    corpo.innerHTML = ({ insumos: mInsumos, compra: mCompra, baixa: mBaixa, contagem: mContagem, mov: mMov, receb: mReceb }[aba])();
     atualizar();
   }
-  function atualizar() { ({ insumos: aInsumos, compra: aCompra, baixa: aBaixa, contagem: aContagem, mov: aMov }[aba])(); }
+  function atualizar() { ({ insumos: aInsumos, compra: aCompra, baixa: aBaixa, contagem: aContagem, mov: aMov, receb: aReceb }[aba])(); }
 
   // ===== Insumos =====
   const mInsumos = () => `
@@ -262,7 +267,7 @@ export async function render(el, { perfil }) {
     const ls = lotes.filter((l) => l.insumoId === i.id).sort(ordemPEPS);
     dX.innerHTML = `<h2 class="h2 mb-1">${esc(i.nome)}</h2><p class="text-ink/70 mb-3">Em estoque: <b>${fq(estoque(i), i.unidade)}</b>. A saída segue a ordem abaixo (vence primeiro, sai primeiro).</p>
       <table><tr><th>Validade</th><th>Saldo</th><th>Entrada</th><th>Origem</th></tr>
-      ${ls.map((l) => `<tr><td>${tagVal(l.validade) === "—" ? "Sem validade" : tagVal(l.validade)}</td><td>${fq(l.qtdAtual, i.unidade)} <small class="text-ink/70">de ${fq(l.qtdInicial, i.unidade)}</small></td><td>${fmtDia(l.entradaEm)}</td><td>${esc(l.origem || "")}</td></tr>`).join("") || '<tr><td colspan="4">Sem lotes com saldo.</td></tr>'}</table>
+      ${ls.map((l) => `<tr><td>${tagVal(l.validade) === "—" ? "Sem validade" : tagVal(l.validade)}</td><td>${fq(l.qtdAtual, i.unidade)} <small class="text-ink/70">de ${fq(l.qtdInicial, i.unidade)}</small></td><td>${fmtDia(l.entradaEm)}</td><td>${esc(l.origem || "")}${l.conferido === false ? ' <span class="tag">Aguardando conferência</span>' : ""}</td></tr>`).join("") || '<tr><td colspan="4">Sem lotes com saldo.</td></tr>'}</table>
       <div class="flex justify-end mt-5"><button type="button" data-fechar="dX" class="btn-alt">Fechar</button></div>`;
     dX.showModal();
   }
@@ -279,6 +284,7 @@ export async function render(el, { perfil }) {
 
   // ===== Compra rápida (só sócios) =====
   const mCompra = () => `<div class="card" style="max-width:44rem">
+    <div class="flex flex-wrap gap-3 mb-4"><button class="btn-alt" data-act="xml">Importar XML da nota (NF-e)</button><input id="xmlarq" type="file" accept=".xml,text/xml" class="hidden"></div><div id="nfinfo" class="mb-3"></div>
     <p class="text-ink/70 mb-4">Lance a compra do dia. Ao salvar: o estoque sobe (com a validade de cada lote), o custo dos insumos é atualizado e, se marcado, a despesa vai para o Financeiro.</p>
     <div class="grid grid-cols-2 gap-4">
       <label>Data<input id="cdata" type="date" class="input" value="${compra.data}"></label>
@@ -293,6 +299,7 @@ export async function render(el, { perfil }) {
     <button class="btn w-full mt-3" data-act="salvarcompra">Salvar compra</button></div>`;
 
   function aCompra() {
+    raiz.querySelector("#nfinfo").innerHTML = compra.nfe ? `<p class="text-sm"><span class="tag ok">Nota ${esc(compra.nfe.numero)}</span> ${esc(compra.nfe.emitente)} · total da nota ${brl(compra.nfe.total)}. Confira cada item abaixo e escolha o insumo dos que não casaram.</p>` : "";
     const c = raiz.querySelector("#citens");
     c.innerHTML = compra.itens.map((it, n) => `<div class="card mb-4" data-n="${n}">
       <label>Insumo<select data-ci="${n}" data-k="insumoId" class="input">${opcoes(ativos(), it.insumoId)}</select></label>
@@ -301,6 +308,7 @@ export async function render(el, { perfil }) {
         <label>Valor total pago (R$)<input data-ci="${n}" data-k="valor" inputmode="decimal" class="input" value="${esc(it.valor)}"></label>
       </div>
       <label class="mt-3">Validade do lote<input data-ci="${n}" data-k="validade" type="date" class="input" value="${it.validade}"></label>
+      ${it.nf ? `<p class="text-sm mt-3"><b>Na nota:</b> ${esc(it.nf.xProd)} · ${String(it.nf.qCom).replace(".", ",")} ${esc(it.nf.uCom)}${it.nf.motivo ? ` <span class="tag ${it.nf.motivo === "nome" ? "" : "ok"}">${{ gtin: "casou pelo código de barras", codigo: "casou pelo código do fornecedor", nome: "sugerido pelo nome: confira" }[it.nf.motivo]}</span>` : ' <span class="tag bad">escolha o insumo</span>'}</p>` : ""}
       <p class="text-sm text-ink/70 mt-3" id="cinfo${n}"></p>
       <button class="btn-alt mt-3" data-act="remitem" data-n="${n}">Remover item</button></div>`).join("") || '<p class="text-ink/70 mb-3">Nenhum item ainda. Toque em "Adicionar item" ou "Ler código".</p>';
     compra.itens.forEach((_, n) => infoItem(n));
@@ -321,22 +329,25 @@ export async function render(el, { perfil }) {
     const c = compra;
     if (!c.itens.length) return toast("Adicione ao menos um item.");
     if (c.itens.length > 50) return toast("No máximo 50 itens por compra.");
-    const lote = writeBatch(db), compraRef = doc(collection(db, "compras")), itens = [];
+    const lote = writeBatch(db), compraRef = doc(collection(db, "compras")), itens = [], recItens = [];
     let total = 0;
     for (const it of c.itens) {
       const ins = insumos.find((i) => i.id === it.insumoId), nEmb = numero(it.emb || "0"), val = parseBRL(it.valor || "0");
       if (!ins) return toast("Escolha o insumo em todos os itens.");
       if (!(nEmb > 0) || !(val > 0)) return toast(`Confira a quantidade e o valor de "${ins.nome}".`);
       const base = r3(nEmb * ins.qtdEmbalagem), lr = doc(collection(db, "lotes")), custoUn = val / base, preco = r2(val / nEmb);
-      lote.set(lr, { insumoId: ins.id, qtdInicial: base, qtdAtual: base, validade: it.validade || "", entradaEm: c.data, origem: "compra", compraId: compraRef.id, criadoPor: auth.currentUser.uid, criadoEm: serverTimestamp() });
+      lote.set(lr, { insumoId: ins.id, qtdInicial: base, qtdAtual: base, validade: it.validade || "", entradaEm: c.data, origem: "compra", compraId: compraRef.id, conferido: false, criadoPor: auth.currentUser.uid, criadoEm: serverTimestamp() });
       lote.set(doc(db, "insumos_custos", ins.id), { precoEmbalagem: preco, custoUnitario: custoUn, atualizadoEm: serverTimestamp() }, { merge: true });
       lote.set(doc(collection(db, "insumos_custos", ins.id, "historico")), { data: c.data, precoEmbalagem: preco, custoUnitario: custoUn, local: c.local || "Compra", compraId: compraRef.id, criadoEm: serverTimestamp() });
       lote.set(doc(collection(db, "movimentacoes")), { tipo: "compra", insumoId: ins.id, insumoNome: ins.nome, unidade: ins.unidade, delta: base, lotes: [{ loteId: lr.id, qtd: base }], motivo: "", obs: c.local || "", por: auth.currentUser.uid, porNome: perfil.nome, em: serverTimestamp() });
       itens.push({ insumoId: ins.id, nome: ins.nome, qtdEmbalagens: nEmb, qtdBase: base, valor: r2(val), validade: it.validade || "", loteId: lr.id });
+      recItens.push({ insumoId: ins.id, nome: ins.nome, unidade: ins.unidade, esperado: base, loteId: lr.id });   // sem valores: quem confere não vê preços
+      if (it.nf && it.nf.cnpj && it.nf.cProd) lote.update(doc(db, "insumos", ins.id), { [`nfe.${chaveForn(it.nf.cnpj, it.nf.cProd)}`]: true });   // o sistema aprende o código do fornecedor
       total += val;
     }
     total = r2(total);
-    lote.set(compraRef, { data: c.data, local: c.local, itens, total, pagoPor: c.pagoPor, despesaLancada: !!c.lancar, criadoPor: auth.currentUser.uid, criadoPorNome: perfil.nome, criadoEm: serverTimestamp() });
+    lote.set(compraRef, { data: c.data, local: c.local, itens, total, pagoPor: c.pagoPor, despesaLancada: !!c.lancar, nfe: c.nfe || null, criadoPor: auth.currentUser.uid, criadoPorNome: perfil.nome, criadoEm: serverTimestamp() });
+    lote.set(doc(db, "recebimentos", compraRef.id), { compraId: compraRef.id, data: c.data, local: c.local || "", itens: recItens, status: "pendente", criadoPor: auth.currentUser.uid, criadoPorNome: perfil.nome, criadoEm: serverTimestamp() });
     if (c.lancar) lote.set(doc(collection(db, "lancamentos")), {
       tipo: "despesa", data: c.data, descricao: `Compra de insumos${c.local ? ` (${c.local})` : ""}`, categoria: "Insumos", valor: total,
       socioId: c.pagoPor, socioNome: c.pagoPor ? nomeSocio(c.pagoPor) : "", canal: "", comprovante: "", obs: `${itens.length} itens`, compraId: compraRef.id,
@@ -345,8 +356,77 @@ export async function render(el, { perfil }) {
     await lote.commit();
     await auditar(perfil, "compra_registrada", `${itens.length} itens, ${brl(total)}${c.local ? " em " + c.local : ""}`);
     compra = { data: hojeISO(), local: "", pagoPor: "", lancar: true, itens: [] };
-    toast("Compra registrada.");
+    toast("Compra registrada. Ela fica aguardando a conferência do estoque.");
     montar();
+  }
+
+  // ===== Nota fiscal (XML) =====
+  async function importarXML(arq) {
+    if (!arq) return;
+    const buf = await arq.arrayBuffer();
+    let txt = new TextDecoder("utf-8").decode(buf);
+    const enc = (txt.match(/encoding="([^"]+)"/i) || [])[1];
+    if (enc && !/utf-?8/i.test(enc)) { try { txt = new TextDecoder(enc.toLowerCase()).decode(buf); } catch (e) { /* mantém utf-8 */ } }
+    let nf;
+    try { nf = parseNFe(txt); } catch (e) { return toast("Este arquivo não parece ser o XML de uma nota fiscal (NF-e ou NFC-e)."); }
+    if (nf.chave) {
+      const s = await getDocs(query(collection(db, "compras"), where("nfe.chave", "==", nf.chave)));
+      if (!s.empty && !confirm(`Esta nota (nº ${nf.numero}) já foi lançada em ${fmtDia(s.docs[0].data().data)}. Importar de novo mesmo assim?`)) return;
+    }
+    compra.data = nf.emissao || compra.data; compra.local = nf.emitente || compra.local;
+    compra.nfe = { chave: nf.chave, numero: nf.numero, serie: nf.serie, emitente: nf.emitente, cnpj: nf.cnpj, total: nf.total };
+    compra.itens = nf.itens.map((it) => {
+      const sg = sugerirInsumo(it, ativos(), nf.cnpj), ins = sg.insumo, q = ins ? embalagensDe(it, ins) : { emb: it.qCom };
+      return { insumoId: ins?.id || "", emb: num(q.emb), valor: num(valorDaLinha(it)), validade: "", nf: { ...it, cnpj: nf.cnpj, motivo: sg.motivo } };
+    });
+    montar();
+    const sem = compra.itens.filter((x) => !x.insumoId).length;
+    toast(`Nota importada: ${nf.itens.length} itens${sem ? `, ${sem} sem insumo definido` : ""}. Confira e salve.`);
+  }
+
+  // ===== Recebimentos: conferência do que chegou =====
+  const mReceb = () => `<p class="text-ink/70 mb-4">Quando uma compra é lançada, o estoque já sobe. Alguém que não fez a compra confere o que realmente chegou e confirma aqui.</p><div id="rlista"></div>`;
+  function aReceb() {
+    const pend = recebs.filter((r) => r.status === "pendente"), feitos = recebs.filter((r) => r.status !== "pendente").slice(0, 12), eu = auth.currentUser.uid;
+    raiz.querySelector("#rlista").innerHTML = (pend.map((r) => `<div class="card mb-4"><div class="flex flex-wrap items-center gap-3"><h3 class="h2 flex-1">Compra de ${fmtDia(r.data)}${r.local ? ` · ${esc(r.local)}` : ""}</h3><span class="tag">${r.itens.length} itens</span></div>
+        <p class="text-sm text-ink/70 mt-1">Lançada por ${esc(r.criadoPorNome)}</p>
+        <ul class="list-disc pl-6 mt-2 text-sm">${r.itens.slice(0, 6).map((i) => `<li>${esc(i.nome)}: ${fq(i.esperado, i.unidade)}</li>`).join("")}${r.itens.length > 6 ? `<li>…e mais ${r.itens.length - 6}</li>` : ""}</ul>
+        <div class="mt-4">${r.criadoPor === eu ? '<span class="tag">Precisa ser conferida por outra pessoa</span>' : `<button class="btn" data-act="conferir" data-id="${r.id}">Conferir agora</button>`}</div></div>`).join("") || '<div class="card mb-4">Nenhuma compra aguardando conferência.</div>') +
+      (feitos.length ? `<h3 class="h2 mb-3 mt-6">Conferidas recentemente</h3><div class="card"><table><tr><th>Compra</th><th>Resultado</th><th>Conferida por</th></tr>${feitos.map((r) => `<tr><td>${fmtDia(r.data)}${r.local ? ` · ${esc(r.local)}` : ""}</td><td><span class="tag ${r.status === "ok" ? "ok" : "bad"}">${r.status === "ok" ? "Tudo certo" : "Com divergência"}</span></td><td>${esc(r.conferencia?.porNome || "")}</td></tr>`).join("")}</table></div>` : "");
+  }
+  function abrirConferencia(r) {
+    fotoConf = null;
+    dX.innerHTML = `<form id="fK" data-id="${r.id}" class="space-y-4"><h2 class="h2">Conferir compra</h2>
+      <p class="text-ink/70">Veja o que realmente chegou. Se veio menos, corrija a quantidade. Informe a validade impressa na embalagem.</p>
+      ${r.itens.map((i, k) => `<div class="card"><b>${esc(i.nome)}</b><p class="text-sm text-ink/70">Esperado: ${fq(i.esperado, i.unidade)}</p>
+        <div class="grid grid-cols-2 gap-4 mt-2"><label>Recebido (${i.unidade})<input name="rec_${k}" class="input" inputmode="decimal" value="${num(i.esperado)}"></label><label>Validade<input name="val_${k}" type="date" class="input"></label></div></div>`).join("")}
+      <label>Observação (opcional)<input name="obs" class="input" maxlength="200"></label>
+      <div><button type="button" class="btn-alt" data-foto="conf">Foto da conferência</button> <span id="cfotoc" class="text-sm"></span></div>
+      <label class="flex items-center gap-3" style="font-size:1rem;color:inherit"><input type="checkbox" name="ok"> Conferi os itens e as quantidades acima</label>
+      <div class="flex gap-3 justify-end"><button type="button" data-fechar="dX" class="btn-alt">Cancelar</button><button class="btn">Confirmar conferência</button></div></form>`;
+    dX.showModal();
+  }
+  async function confirmarConferencia(form) {
+    const r = recebs.find((x) => x.id === form.dataset.id), f2 = form.elements, uid = auth.currentUser.uid, linhas = [];
+    if (!f2.ok.checked) return toast('Marque "Conferi os itens" para confirmar.');
+    for (let k = 0; k < r.itens.length; k++) {
+      const rec = numero(f2["rec_" + k].value);
+      if (isNaN(rec) || rec < 0) return toast(`Quantidade recebida inválida em "${r.itens[k].nome}".`);
+      linhas.push({ ...r.itens[k], recebido: r3(rec), validade: f2["val_" + k].value || "" });
+    }
+    const lote = writeBatch(db); let diverge = false;
+    for (const l of linhas) {
+      const snap = await getDoc(doc(db, "lotes", l.loteId)), d = snap.data(), falta = Math.max(0, r3(l.esperado - l.recebido)), tira = Math.min(falta, d.qtdAtual);
+      if (l.recebido !== l.esperado) diverge = true;
+      lote.update(snap.ref, { qtdAtual: r3(d.qtdAtual - tira), validade: l.validade || d.validade || "", conferido: true, conferidoPor: uid });
+      if (tira > 0) lote.set(doc(collection(db, "movimentacoes")), { tipo: "conferencia", insumoId: l.insumoId, insumoNome: l.nome, unidade: l.unidade, delta: -tira, lotes: [{ loteId: l.loteId, qtd: tira }],
+        motivo: "conferencia", obs: `Conferência: esperado ${l.esperado}, recebido ${l.recebido}`, por: uid, porNome: perfil.nome, em: serverTimestamp() });
+    }
+    lote.update(doc(db, "recebimentos", r.id), { status: diverge ? "divergencia" : "ok", conferencia: { por: uid, porNome: perfil.nome, em: serverTimestamp(), obs: f2.obs.value.trim(), foto: fotoConf || "",
+      itens: linhas.map((l) => ({ loteId: l.loteId, esperado: l.esperado, recebido: l.recebido, validade: l.validade })) } });
+    await lote.commit();
+    await auditar(perfil, diverge ? "recebimento_divergencia" : "recebimento_conferido", `Compra de ${r.data}${r.local ? " em " + r.local : ""}`);
+    dX.close(); toast(diverge ? "Conferência registrada com divergência. Os sócios devem revisar." : "Conferência registrada. Tudo certo!");
   }
 
   // ===== Baixa =====
@@ -392,11 +472,15 @@ export async function render(el, { perfil }) {
     <div id="kinfo" class="mt-3"></div>
     <label class="mt-4">Quantidade contada<input id="kqtd" class="input qtd-grande" inputmode="decimal" placeholder="Ex.: 3500 ou 3,5 kg" autocomplete="off"></label>
     <label class="mt-4">Observação (opcional)<input id="kobs" class="input" maxlength="120"></label>
-    <button class="btn w-full mt-5" data-act="contar">Ajustar estoque</button></div>`;
+    <div class="mt-4"><button type="button" class="btn-alt" data-foto="cont">Tirar foto do estoque</button> <span id="cfoto" class="text-sm"></span></div>
+    <p class="text-xs text-ink/70 mt-1">A foto grava data e hora na imagem e fica guardada no Google Drive.</p>
+    <button class="btn w-full mt-5" data-act="contar">Registrar contagem</button></div>
+    <div class="card mt-5" style="max-width:34rem"><h3 class="h2 mb-2">Últimas contagens</h3><div id="clist"></div></div>`;
   function aContagem() {
     raiz.querySelector("#ksel").innerHTML = opcoes(ativos(), sel.contagem);
     const i = insumos.find((x) => x.id === sel.contagem);
     raiz.querySelector("#kinfo").innerHTML = i ? `<p>O sistema indica: <b>${fq(estoque(i), i.unidade)}</b></p>` : "";
+    raiz.querySelector("#clist").innerHTML = contagens.length ? `<table><tr><th>Quando</th><th>Item</th><th>Resultado</th></tr>${contagens.map((c) => `<tr><td>${fmtData(c.em)}<br><small class="text-ink/70">${esc(c.porNome)}</small></td><td>${esc(c.insumoNome)}</td><td>${c.dif === 0 ? '<span class="tag ok">confere</span>' : `<span class="tag bad">${c.dif > 0 ? "+" : ""}${fq(c.dif, c.unidade)}</span>`}${c.foto ? ` <a class="underline text-brand-dark text-sm" href="${esc(c.foto)}" target="_blank" rel="noopener">foto</a>` : ""}</td></tr>`).join("")}</table>` : "<p>Nenhuma contagem registrada.</p>";
   }
   async function contar() {
     const i = insumos.find((x) => x.id === sel.contagem);
@@ -404,13 +488,17 @@ export async function render(el, { perfil }) {
     const txt = raiz.querySelector("#kqtd").value.trim();
     const r = txt === "0" ? { valor: 0 } : parseQtd(txt, i.unidade);
     if (r.erro) return toast(r.erro);
-    const sis = estoque(i), dif = r3(r.valor - sis);
-    if (dif === 0) return toast("A contagem confere com o sistema. Nada a ajustar.");
-    if (!confirm(`${i.nome}\nSistema: ${fq(sis, i.unidade)}\nContado: ${fq(r.valor, i.unidade)}\nDiferença: ${dif > 0 ? "+" : ""}${fq(dif, i.unidade)}\n\nConfirmar o ajuste?`)) return;
-    await ajustarContagem({ insumo: i, contado: r.valor, obs: raiz.querySelector("#kobs").value.trim(), perfil, lotes });
-    await auditar(perfil, "estoque_ajustado", `${i.nome}: ${fq(sis, i.unidade)} → ${fq(r.valor, i.unidade)}`);
-    raiz.querySelector("#kqtd").value = ""; raiz.querySelector("#kobs").value = "";
-    toast("Estoque ajustado.");
+    if (!fotoContagem) {
+      if (driveConfigurado()) return toast("Tire a foto do estoque (ela registra data e hora) antes de registrar a contagem.");
+      if (!confirm("O envio de fotos ainda não foi configurado. Registrar a contagem sem foto?")) return;
+    }
+    const sis = estoque(i), dif = r3(r.valor - sis), obs = raiz.querySelector("#kobs").value.trim();
+    if (dif !== 0 && !confirm(`${i.nome}\nSistema: ${fq(sis, i.unidade)}\nContado: ${fq(r.valor, i.unidade)}\nDiferença: ${dif > 0 ? "+" : ""}${fq(dif, i.unidade)}\n\nConfirmar o ajuste?`)) return;
+    await addDoc(collection(db, "contagens"), { insumoId: i.id, insumoNome: i.nome, unidade: i.unidade, sistema: sis, contado: r.valor, dif, foto: fotoContagem || "", obs,
+      por: auth.currentUser.uid, porNome: perfil.nome, em: serverTimestamp() });   // toda auditoria fica registrada, mesmo quando confere
+    if (dif !== 0) { await ajustarContagem({ insumo: i, contado: r.valor, obs, perfil, lotes }); await auditar(perfil, "estoque_ajustado", `${i.nome}: ${fq(sis, i.unidade)} → ${fq(r.valor, i.unidade)}`); }
+    raiz.querySelector("#kqtd").value = ""; raiz.querySelector("#kobs").value = ""; fotoContagem = null; raiz.querySelector("#cfoto").textContent = "";
+    toast(dif === 0 ? "Contagem registrada: confere com o sistema." : "Estoque ajustado.");
   }
 
   // ===== Movimentações =====
@@ -452,6 +540,17 @@ export async function render(el, { perfil }) {
     if (ab) { aba = ab.dataset.aba; return montar(); }
     const fc = e.target.closest("[data-fechar]");
     if (fc) return raiz.querySelector("#" + fc.dataset.fechar).close();
+    const fb = e.target.closest("[data-foto]");   // câmera: tem de ser chamada direto do clique
+    if (fb) {
+      const k = fb.dataset.foto;
+      try {
+        const f = await tirarEEnviar({ pasta: k === "cont" ? "Auditorias de estoque" : "Conferencia de recebimentos", nome: k === "cont" ? (insumos.find((x) => x.id === sel.contagem)?.nome || "contagem").replace(/\s+/g, "_") : "conferencia",
+          carimbo: true, texto: `${perfil.nome} · ${k === "cont" ? "contagem de estoque" : "conferência"}` });
+        if (f && k === "cont") { fotoContagem = f.url; raiz.querySelector("#cfoto").innerHTML = '<span class="foto-ok">✔ foto anexada</span>'; }
+        else if (f) { fotoConf = f.url; const sp = raiz.querySelector("#cfotoc"); if (sp) sp.innerHTML = '<span class="foto-ok">✔ foto anexada</span>'; }
+      } catch (err) { erro(err); }
+      return;
+    }
     const b = e.target.closest("[data-act]");
     if (!b) return;
     const a = b.dataset.act, ins = insumos.find((x) => x.id === b.dataset.id);
@@ -476,6 +575,8 @@ export async function render(el, { perfil }) {
       else if (a === "additem") { compra.itens.push({ insumoId: "", emb: "1", valor: "", validade: "" }); aCompra(); }
       else if (a === "remitem") { compra.itens.splice(Number(b.dataset.n), 1); aCompra(); }
       else if (a === "lerc") await aplicarCodigo("compra");
+      else if (a === "xml") raiz.querySelector("#xmlarq").click();
+      else if (a === "conferir") abrirConferencia(recebs.find((x) => x.id === b.dataset.id));
       else if (a === "ler") await aplicarCodigo(b.dataset.alvo);
       else if (a === "salvarcompra") await salvarCompra();
       else if (a === "baixar") await baixar();
@@ -501,6 +602,7 @@ export async function render(el, { perfil }) {
     else if (t.id === "bsel") { sel.baixa = t.value; aBaixa(); }
     else if (t.id === "ksel") { sel.contagem = t.value; aContagem(); }
     else if (t.id === "csvarq") lerArquivoCSV(t.files[0]).catch(erro);
+    else if (t.id === "xmlarq") importarXML(t.files[0]).catch(erro);
     else if (t.id === "cpago") compra.pagoPor = t.value;
     else if (t.id === "clancar") compra.lancar = t.checked;
     else if (t.dataset.ci !== undefined && t.dataset.k === "insumoId") { compra.itens[Number(t.dataset.ci)].insumoId = t.value; infoItem(Number(t.dataset.ci)); }
@@ -508,9 +610,9 @@ export async function render(el, { perfil }) {
 
   raiz.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (e.target.id !== "fI") return;
+    if (e.target.id !== "fI" && e.target.id !== "fK") return;
     const btn = e.target.querySelector(".btn"); btn.disabled = true;
-    try { await salvarInsumo(); } catch (err) { erro(err); } finally { btn.disabled = false; }
+    try { if (e.target.id === "fK") await confirmarConferencia(e.target); else await salvarInsumo(); } catch (err) { erro(err); } finally { btn.disabled = false; }
   });
 
   // ---------- dados em tempo real ----------
@@ -521,6 +623,8 @@ export async function render(el, { perfil }) {
   if (admin) paradas.push(onSnapshot(collection(db, "insumos_custos"), (s) => { custos = {}; s.docs.forEach((d) => { custos[d.id] = d.data(); }); if (aba === "insumos") aInsumos(); }, erro));
   if (operacional) paradas.push(onSnapshot(query(collection(db, "movimentacoes"), orderBy("em", "desc"), limit(200)), (s) => { movs = s.docs.map((d) => d.data()); if (aba === "mov") aMov(); }, erro));
 
+  if (podeConferir) paradas.push(onSnapshot(query(collection(db, "recebimentos"), orderBy("criadoEm", "desc"), limit(60)), (s) => { recebs = s.docs.map((d) => ({ id: d.id, ...d.data() })); if (aba === "receb") aReceb(); }, erro));
+  if (operacional) paradas.push(onSnapshot(query(collection(db, "contagens"), orderBy("em", "desc"), limit(10)), (s) => { contagens = s.docs.map((d) => d.data({ serverTimestamps: "estimate" })); if (aba === "contagem") aContagem(); }, erro));
   montar();
   return () => paradas.forEach((p) => p());
 }

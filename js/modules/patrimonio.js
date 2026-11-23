@@ -1,6 +1,7 @@
 import { db } from "../firebase.js";
 import { traduzErro } from "../auth.js";
 import { esc, toast, auditar, brl, parseBRL, hojeISO, fmtDia } from "../util.js";
+import { tirarEEnviar, MSG_FOTO } from "../core/foto.js";
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -55,7 +56,8 @@ export async function render(el, { perfil }) {
         <label>Valor atribuído ao inventário (R$)<input name="valorAtribuido" inputmode="decimal" class="input" placeholder="2.000,00"></label>
         <label>Data de aquisição<input name="dataAquisicao" type="date" class="input"></label>
       </div>
-      <label>Fotos (links do Google Drive, um por linha, até 10)<textarea name="fotos" rows="3" class="input" placeholder="https://drive.google.com/file/d/..."></textarea></label>
+      <label>Fotos (até 10; as fotos tiradas aqui entram sozinhas na lista, em formato de link do Google Drive)<textarea name="fotos" rows="3" class="input" placeholder="https://drive.google.com/file/d/..."></textarea></label>
+      <div class="flex flex-wrap items-center gap-3"><button type="button" class="btn-alt" data-foto="cam">Tirar foto</button><button type="button" class="btn-alt" data-foto="gal">Escolher da galeria</button><span id="fotoMsg" class="text-sm"></span></div>
       <label>Observações<textarea name="observacoes" rows="2" maxlength="500" class="input"></textarea></label>
       <div class="flex gap-3 justify-end"><button type="button" data-fechar="dF" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div>
     </form></dialog>
@@ -168,6 +170,14 @@ export async function render(el, { perfil }) {
   raiz.addEventListener("click", async (e) => {
     if (e.target.id === "novo") return abrirForm(null);
     if (e.target.id === "csv") return exportarCSV();
+    const fb = e.target.closest("[data-foto]");   // câmera: tem de ser chamada direto do clique
+    if (fb) {
+      try {
+        const r = await tirarEEnviar({ pasta: "Patrimonio", nome: (fF.elements.nome.value || "bem").replace(/\s+/g, "_"), carimbo: false, camera: fb.dataset.foto === "cam" });
+        if (r) { const t = fF.elements.fotos; t.value = (t.value.trim() ? t.value.trim() + "\n" : "") + r.url; raiz.querySelector("#fotoMsg").innerHTML = '<span class="foto-ok">✔ foto enviada</span>'; }
+      } catch (err) { console.error(err); toast(MSG_FOTO[err.message] || traduzErro(err)); }
+      return;
+    }
     const fechar = e.target.closest("[data-fechar]");
     if (fechar) { const d = raiz.querySelector("#" + fechar.dataset.fechar); if (d.id === "dD") aberto = null; return d.close(); }
     const b = e.target.closest("button[data-act]");

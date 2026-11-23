@@ -15,14 +15,16 @@ const ICONES = {
   portal: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
   equipe: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2",
   relatorios: "M18 20V10M12 20V4M6 20v-6",
+  rotinas: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5h6M9 14l2 2 4-4",
   mais: "M4 6h16M4 12h16M4 18h16"
 };
 const icone = (k) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONES[k]}"/></svg>`;
 
 const MODULOS = {
   inicio:       { nome: "Início",       icone: "inicio",       papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/inicio.js") },
+  rotinas:      { nome: "Rotinas",      icone: "rotinas",      papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/rotinas.js") },
   portal:       { nome: "Portal",       icone: "portal",       papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/portal.js") },
-  tarefas:      { nome: "Tarefas",      icone: "tarefas",      papeis: ["admin", "gerente"],               carregar: () => import("./modules/tarefas.js") },
+  tarefas:      { nome: "Tarefas",      icone: "tarefas",      papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/tarefas.js") },
   estoque:      { nome: "Estoque",      icone: "estoque",      papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/estoque.js") },
   cardapio:     { nome: "Cardápio",     icone: "cardapio",     papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/cardapio.js") },
   equipe:       { nome: "Equipe",       icone: "equipe",       papeis: ["admin", "gerente"],               carregar: () => import("./modules/equipe.js") },
@@ -36,9 +38,9 @@ const MODULOS = {
 
 // Barra inferior do celular: os atalhos mais usados de cada perfil (o resto fica em "Mais")
 const DESTAQUE = {
-  admin: ["inicio", "estoque", "cardapio", "financeiro"],
-  gerente: ["inicio", "portal", "estoque", "cardapio"],
-  funcionario: ["inicio", "portal", "estoque", "cardapio"]
+  admin: ["inicio", "tarefas", "estoque", "cardapio", "financeiro"],
+  gerente: ["inicio", "rotinas", "portal", "estoque", "cardapio"],
+  funcionario: ["inicio", "rotinas", "portal", "estoque", "cardapio"]
 };
 
 const $ = (id) => document.getElementById(id);
@@ -65,7 +67,7 @@ observarSessao((p) => {
   const fixos = lista.length <= 5 ? lista : (DESTAQUE[p.papel] || []).map((k) => lista.find(([x]) => x === k)).filter(Boolean);
   $("bottom").innerHTML = fixos.map(([k, m]) =>
     `<a data-k="${k}" href="#/${k}">${icone(m.icone)}<span>${m.nome}</span></a>`).join("") +
-    (lista.length > 5 ? `<button type="button" id="mais">${icone("mais")}<span>Mais</span></button>` : "");
+    (lista.length > fixos.length ? `<button type="button" id="mais">${icone("mais")}<span>Mais</span></button>` : "");
 
   if (!iniciado) {
     iniciado = true;

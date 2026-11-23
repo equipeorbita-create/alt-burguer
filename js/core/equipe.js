@@ -11,3 +11,9 @@ export async function carregarEquipe(perfil) {
   if (perfil.papel === "gerente") lista.push({ uid: perfil.uid, nome: perfil.nome, papel: "gerente", ativo: true });
   return lista.sort((a, b) => a.nome.localeCompare(b.nome));
 }
+
+// Só sócios: todos os usuários ativos (para escolher quem faz cada tarefa ou rotina)
+export async function carregarUsuariosAtivos() {
+  const s = await getDocs(collection(db, "usuarios"));
+  return s.docs.map((d) => ({ uid: d.id, ...d.data() })).filter((u) => u.ativo).sort((a, b) => a.nome.localeCompare(b.nome));
+}

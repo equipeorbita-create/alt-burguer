@@ -29,8 +29,17 @@ function ligarAlertas(el, perfil) {
     catch (err) { console.error(err); b.disabled = false; toast("Não foi possível registrar. Tente de novo."); }
   });
 }
-const atalhos = `<div class="grid gap-4 sm:grid-cols-2"><a class="card block" href="#/portal"><h3 class="h2">Bater ponto</h3><p class="text-ink/70 mt-1">Entrada, intervalo e saída.</p></a>
-  <a class="card block" href="#/portal"><h3 class="h2">Manual e notícias</h3><p class="text-ink/70 mt-1">Regras da casa, avisos e comunicados.</p></a></div>`;
+const atalhos = `<div class="grid gap-4 sm:grid-cols-2"><a class="card block" href="#/rotinas"><h3 class="h2">Meu dia</h3><p class="text-ink/70 mt-1">Checklist de hoje e relato de prejuízos.</p></a>
+  <a class="card block" href="#/portal"><h3 class="h2">Bater ponto</h3><p class="text-ink/70 mt-1">Entrada, intervalo e saída. Manual e notícias.</p></a></div>`;
+
+// Sócio vê todas as tarefas; os demais só as que são deles (as regras também garantem isso no servidor)
+const tarefasDe = async (perfil) => (await getDocs(perfil.papel === "admin" ? collection(db, "tarefas") : query(collection(db, "tarefas"), where("responsaveis", "array-contains", perfil.uid))))
+  .docs.map((d) => ({ id: d.id, ...d.data() }));
+async function recebPendentes(perfil) {
+  if (!(perfil.papel === "admin" || perfil.papel === "gerente" || perfil.conferente === true)) return 0;
+  try { return (await getDocs(query(collection(db, "recebimentos"), where("status", "==", "pendente")))).size; } catch (e) { console.error(e); return 0; }
+}
+const avisoReceb = (n) => (n ? `<a class="card block mb-4" href="#/estoque" style="border-left:10px solid var(--orange)"><h3 class="h2">${n} compra${n > 1 ? "s" : ""} aguardando conferência</h3><p class="text-ink/70 mt-1">Abra Estoque e toque em Recebimentos para conferir o que chegou.</p></a>` : "");
 
 export async function render(el, { perfil }) {
   const admin = perfil.papel === "admin";
@@ -38,8 +47,8 @@ export async function render(el, { perfil }) {
     <p class="text-ink/70 mt-1">Você entrou como <b>${esc(PAPEIS[perfil.papel] || perfil.papel)}</b>.</p></div>`;
 
   if (perfil.papel === "funcionario") {
-    const al = await alertasPendentes(perfil);
-    el.innerHTML = topo + htmlAlertas(al) + atalhos;
+    const [al, nRec] = await Promise.all([alertasPendentes(perfil), recebPendentes(perfil)]);
+    el.innerHTML = topo + htmlAlertas(al) + avisoReceb(nRec) + atalhos;
     ligarAlertas(el, perfil);
     return;
   }
@@ -48,7 +57,7 @@ export async function render(el, { perfil }) {
   const pegar = async (n) => (await getDocs(collection(db, n))).docs.map((d) => ({ id: d.id, ...d.data() }));
   let tar = [], forn = [], orc = [], pat = [], lan = [], reemb = [], cfg = {}, ins = [], lot = [];
   try {
-    [tar, forn, orc, pat, lan, reemb, ins, lot] = await Promise.all([pegar("tarefas"), admin ? pegar("fornecedores") : [], admin ? pegar("orcamentos") : [], admin ? pegar("patrimonio") : [], admin ? pegar("lancamentos") : [], admin ? pegar("reembolsos") : [], pegar("insumos"),
+    [tar, forn, orc, pat, lan, reemb, ins, lot] = await Promise.all([tarefasDe(perfil), admin ? pegar("fornecedores") : [], admin ? pegar("orcamentos") : [], admin ? pegar("patrimonio") : [], admin ? pegar("lancamentos") : [], admin ? pegar("reembolsos") : [], pegar("insumos"),
       getDocs(query(collection(db, "lotes"), where("qtdAtual", ">", 0))).then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() })))]);
     if (admin) { const c = await getDoc(doc(db, "config", "geral")); cfg = c.exists() ? c.data() : {}; }
   } catch (e) {
@@ -83,8 +92,8 @@ export async function render(el, { perfil }) {
             kpi("Patrimônio (valor atribuído)", brl(pat.reduce((t, b) => t + b.valorAtribuido * b.quantidade, 0)), `${pat.length} bens no inventário`);
   }
 
-  const alGer = admin ? [] : await alertasPendentes(perfil);
-  el.innerHTML = topo + (admin ? "" : htmlAlertas(alGer)) + `
+  const alGer = admin ? [] : await alertasPendentes(perfil), nRec = await recebPendentes(perfil);
+  el.innerHTML = topo + (admin ? "" : htmlAlertas(alGer)) + avisoReceb(nRec) + `
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
       ${kpi("Estoque abaixo do mínimo", baixos, baixos ? "veja em Estoque" : "tudo certo")}
       ${kpi("Lotes vencendo (7 dias)", vencendo, vencendo ? "use primeiro (PEPS)" : "nenhum")}
