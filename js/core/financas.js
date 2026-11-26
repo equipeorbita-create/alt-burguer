@@ -8,7 +8,8 @@ export const TIPOS = {
   entrada: "Entrada",
   retirada: "Retirada / pró-labore",
   emprestimo: "Empréstimo de sócio",
-  reembolso: "Reembolso a sócio"
+  reembolso: "Reembolso a sócio",
+  pagamento_fatura: "Pagamento de fatura do cartão"
 };
 
 // [tipo, nome]. O sócio pode editar depois em Financeiro > Configurações.
@@ -33,6 +34,7 @@ export async function carregarSocios() {
 // Regras de cálculo (uma só fonte de verdade):
 //  - Caixa = caixa inicial + empréstimos + entradas - despesas pagas pelo caixa - retiradas - reembolsos
 //  - Despesa paga do bolso do sócio NÃO mexe no caixa: vira saldo a devolver a ele
+//  - Compra no cartão da empresa NÃO mexe no caixa; o pagamento da fatura (pagamento_fatura) é que tira do caixa
 //  - Saldo do sócio = empréstimos + despesas pagas do bolso - reembolsos recebidos
 export function resumo(lancs, caixaInicial = 0) {
   let caixa = Number(caixaInicial) || 0;
@@ -43,7 +45,8 @@ export function resumo(lancs, caixaInicial = 0) {
     const v = l.valor;
     if (l.tipo === "emprestimo") { caixa += v; s(l.socioId).emprestado += v; }
     else if (l.tipo === "entrada") { caixa += v; tot.entradas += v; }
-    else if (l.tipo === "despesa") { tot.despesas += v; if (l.socioId) s(l.socioId).despesasPagas += v; else caixa -= v; }
+    else if (l.tipo === "despesa") { tot.despesas += v; if (l.socioId) s(l.socioId).despesasPagas += v; else if (!l.cartaoId) caixa -= v; }   // compra no cartão só sai do caixa quando a fatura é paga
+    else if (l.tipo === "pagamento_fatura") caixa -= v;
     else if (l.tipo === "retirada") { caixa -= v; tot.retiradas += v; if (l.socioId) s(l.socioId).retiradas += v; }
     else if (l.tipo === "reembolso") { caixa -= v; s(l.socioId).reembolsado += v; }
   }

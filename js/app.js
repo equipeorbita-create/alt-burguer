@@ -16,6 +16,8 @@ const ICONES = {
   equipe: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2",
   relatorios: "M18 20V10M12 20V4M6 20v-6",
   rotinas: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5h6M9 14l2 2 4-4",
+  caixa: "M3 7h18v12H3zM3 7l2-3h14l2 3M16 13h2",
+  contas: "M6 2h12v20l-3-2-3 2-3-2-3 2zM9 7h6M9 11h6M9 15h4",
   mais: "M4 6h16M4 12h16M4 18h16"
 };
 const icone = (k) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONES[k]}"/></svg>`;
@@ -28,6 +30,8 @@ const MODULOS = {
   estoque:      { nome: "Estoque",      icone: "estoque",      papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/estoque.js") },
   cardapio:     { nome: "Cardápio",     icone: "cardapio",     papeis: ["admin", "gerente", "funcionario"], carregar: () => import("./modules/cardapio.js") },
   equipe:       { nome: "Equipe",       icone: "equipe",       papeis: ["admin", "gerente"],               carregar: () => import("./modules/equipe.js") },
+  caixa:        { nome: "Caixa",        icone: "caixa",        papeis: ["admin", "gerente"],               carregar: () => import("./modules/caixa.js") },
+  contas:       { nome: "Contas",       icone: "contas",       papeis: ["admin"],                          carregar: () => import("./modules/contas.js") },
   financeiro:   { nome: "Financeiro",   icone: "financeiro",   papeis: ["admin"],                          carregar: () => import("./modules/financeiro.js") },
   societario:   { nome: "Societário",   icone: "societario",   papeis: ["admin"],                          carregar: () => import("./modules/societario.js") },
   fornecedores: { nome: "Fornecedores", icone: "fornecedores", papeis: ["admin"],                          carregar: () => import("./modules/fornecedores.js") },
@@ -38,8 +42,8 @@ const MODULOS = {
 
 // Barra inferior do celular: os atalhos mais usados de cada perfil (o resto fica em "Mais")
 const DESTAQUE = {
-  admin: ["inicio", "tarefas", "estoque", "cardapio", "financeiro"],
-  gerente: ["inicio", "rotinas", "portal", "estoque", "cardapio"],
+  admin: ["inicio", "caixa", "estoque", "cardapio", "financeiro"],
+  gerente: ["inicio", "caixa", "rotinas", "estoque", "cardapio"],
   funcionario: ["inicio", "rotinas", "portal", "estoque", "cardapio"]
 };
 
