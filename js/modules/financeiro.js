@@ -2,6 +2,8 @@ import { db, auth } from "../firebase.js";
 import { traduzErro } from "../auth.js";
 import { esc, toast, auditar, brl, parseBRL, hojeISO, fmtDia } from "../util.js";
 import { resumo, carregarSocios, r2, TIPOS, CATEGORIAS_PADRAO, slug } from "../core/financas.js";
+import { FORMAS_PAG } from "../core/caixa.js";
+import { assinarEntradas } from "../core/caixa-dados.js";
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, doc, writeBatch, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -16,7 +18,7 @@ const tagTipo = (t) => t === "entrada" ? `<span class="tag ok">Entrada</span>`
 export async function render(el, { perfil }) {
   const socios = await carregarSocios();
   const nomeSocio = (id) => (socios.find((s) => s.uid === id) || {}).nome || "—";
-  let lancs = [], cats = [], cfg = {}, aba = "resumo", editando = null, semeou = false;
+  let lancsBase = [], extras = [], cartoes = [], lancs = [], cats = [], cfg = {}, aba = "resumo", editando = null, semeou = false;
   const filtro = { de: "", ate: "", tipo: "", cat: "", socio: "" };
   const pct = (uid) => cfg.divisao?.[uid] ?? r2(100 / (socios.length || 1));
 
@@ -32,7 +34,7 @@ export async function render(el, { perfil }) {
 
     <dialog id="dL"><form id="fL" class="space-y-4">
       <h2 class="h2" id="tL"></h2>
-      <label>Tipo<select name="tipo" class="input">${Object.entries(TIPOS).filter(([k]) => k !== "reembolso").map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+      <label>Tipo<select name="tipo" class="input">${Object.entries(TIPOS).filter(([k]) => !["reembolso", "pagamento_fatura"].includes(k)).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
       <div class="grid grid-cols-2 gap-4">
         <label>Data<input name="data" type="date" required class="input"></label>
         <label>Valor (R$)<input name="valor" required inputmode="decimal" class="input" placeholder="1.200,00"></label>
@@ -40,6 +42,7 @@ export async function render(el, { perfil }) {
       <label>Descrição<input name="descricao" required maxlength="200" class="input"></label>
       <label data-campo="categoria">Categoria<select name="categoria" class="input"></select></label>
       <label data-campo="socioId"><span id="rotSocio">Sócio</span><select name="socioId" class="input"></select></label>
+      <label data-campo="forma">Forma de pagamento<select name="forma" class="input">${Object.entries(FORMAS_PAG).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
       <label data-campo="canal">Canal<select name="canal" class="input"><option value="">—</option><option value="presencial">Presencial</option><option value="delivery">Delivery</option></select></label>
       <label>Comprovante (link opcional; ou envie pelo WhatsApp)<input name="comprovante" class="input" placeholder="https://..."></label>
       <label>Observações<textarea name="obs" rows="2" maxlength="300" class="input"></textarea></label>
@@ -131,9 +134,9 @@ export async function render(el, { perfil }) {
           return `<tr><td>${fmtDia(l.data)}</td><td>${tagTipo(l.tipo)}</td>
             <td>${esc(l.descricao)}${l.obs ? `<br><small class="text-ink/70">${esc(l.obs)}</small>` : ""}${l.comprovante ? ` <a class="underline text-brand-dark text-sm" href="${esc(l.comprovante)}" target="_blank" rel="noopener">comprovante</a>` : ""}</td>
             <td>${esc(l.categoria)}${l.canal ? `<br><small class="text-ink/70">${l.canal}</small>` : ""}</td>
-            <td>${l.socioNome ? esc(l.socioNome) + (l.tipo === "despesa" ? " (do bolso)" : "") : "Caixa"}</td>
+            <td>${l.cartaoId ? esc(l.cartaoNome || "Cartão da empresa") : l.socioNome ? esc(l.socioNome) + (l.tipo === "despesa" ? " (do bolso)" : "") : (l.sintetico ? "Fechamento do dia" : "Caixa")}</td>
             <td style="color:${mais ? "#1d7a46" : "inherit"}">${mais ? "+" : "−"} ${brl(l.valor)}</td>
-            <td class="whitespace-nowrap no-print">${l.tipo === "reembolso" ? "" : `<button class="btn-alt" data-act="ed" data-id="${l.id}">Editar</button> <button class="btn-alt" data-act="del" data-id="${l.id}">Excluir</button>`}</td></tr>`;
+            <td class="whitespace-nowrap no-print">${(["reembolso", "pagamento_fatura"].includes(l.tipo) || l.sintetico) ? "" : `<button class="btn-alt" data-act="ed" data-id="${l.id}">Editar</button> <button class="btn-alt" data-act="del" data-id="${l.id}">Excluir</button>`}</td></tr>`;
         }).join("")}</table>`}</div>`;
   }
 
@@ -160,10 +163,15 @@ export async function render(el, { perfil }) {
     const mostrar = (n, on) => fL.querySelector(`[data-campo="${n}"]`).classList.toggle("hidden", !on);
     mostrar("socioId", COM_SOCIO.includes(t)); mostrar("canal", t === "entrada"); mostrar("categoria", t !== "emprestimo");
     raiz.querySelector("#rotSocio").textContent = t === "despesa" ? "Quem pagou" : t === "emprestimo" ? "Sócio que emprestou" : "Sócio que retirou";
-    x.socioId.innerHTML = (t === "despesa" ? '<option value="">Caixa da empresa</option>' : "") + socios.map((s) => `<option value="${s.uid}">${esc(s.nome)}</option>`).join("");
+    x.socioId.innerHTML = (t === "despesa" ? '<option value="">Caixa da empresa</option>' + cartoes.filter((c) => c.ativo !== false).map((c) => `<option value="cartao:${c.id}">${esc(c.nome)}</option>`).join("") : "") + socios.map((s) => `<option value="${s.uid}">${esc(s.nome)}</option>`).join("");
     x.categoria.innerHTML = cats.filter((c) => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => `<option>${esc(c.nome)}</option>`).join("");
     if (manter.socioId !== undefined) x.socioId.value = manter.socioId;
     if (manter.categoria) x.categoria.value = manter.categoria;
+    mostrarForma();
+  }
+  function mostrarForma() {   // a forma de pagamento só vale quando não é cartão nem do bolso do sócio
+    const x = fL.elements, mostra = x.tipo.value === "despesa" && !x.socioId.value.startsWith("cartao:") && !x.socioId.value;
+    fL.querySelector('[data-campo="forma"]').classList.toggle("hidden", !mostra);
   }
 
   function abrirForm(l) {
@@ -171,9 +179,9 @@ export async function render(el, { perfil }) {
     raiz.querySelector("#tL").textContent = l ? "Editar lançamento" : "Novo lançamento";
     fL.reset();
     const x = fL.elements;
-    ["tipo", "data", "valor", "socioId"].forEach((n) => { x[n].disabled = !!l; });
+    ["tipo", "data", "valor", "socioId", "forma"].forEach((n) => { x[n].disabled = !!l; });
     if (l) {
-      x.tipo.value = l.tipo; ajustarCampos({ socioId: l.socioId, categoria: l.categoria });
+      x.tipo.value = l.tipo; ajustarCampos({ socioId: l.cartaoId ? "cartao:" + l.cartaoId : l.socioId, categoria: l.categoria });
       x.data.value = l.data; x.valor.value = num(l.valor); x.descricao.value = l.descricao;
       x.canal.value = l.canal || ""; x.comprovante.value = l.comprovante || ""; x.obs.value = l.obs || "";
     } else { x.data.value = hojeISO(); ajustarCampos(); }
@@ -219,6 +227,7 @@ export async function render(el, { perfil }) {
 
   raiz.addEventListener("change", (e) => {
     if (e.target.name === "tipo" && e.target.closest("#fL")) return ajustarCampos();
+    if (e.target.name === "socioId" && e.target.closest("#fL")) return mostrarForma();
     const k = e.target.dataset.f;
     if (k) { filtro[k] = e.target.value; desenhar(); }
   });
@@ -241,14 +250,15 @@ export async function render(el, { perfil }) {
         } else {
           const t = d.tipo, valor = parseBRL(d.valor);
           if (!(valor > 0)) return toast("Informe um valor válido.");
-          const socioId = COM_SOCIO.includes(t) ? (d.socioId || "") : "";
+          const raw = COM_SOCIO.includes(t) ? (d.socioId || "") : "", cartaoSel = raw.startsWith("cartao:") ? cartoes.find((c) => c.id === raw.slice(7)) : null, socioId = cartaoSel ? "" : raw;
           if (t !== "despesa" && COM_SOCIO.includes(t) && !socioId) return toast("Escolha o sócio.");
           await addDoc(collection(db, "lancamentos"), {
             tipo: t, data: d.data, descricao: d.descricao.trim(), categoria: t === "emprestimo" ? "Empréstimo do sócio" : (d.categoria || "Outros"),
-            valor: r2(valor), socioId, socioNome: socioId ? nomeSocio(socioId) : "", canal: t === "entrada" ? d.canal : "",
+            valor: r2(valor), socioId, socioNome: socioId ? nomeSocio(socioId) : "", cartaoId: cartaoSel?.id || "", cartaoNome: cartaoSel?.nome || "",
+            forma: t === "despesa" ? (cartaoSel ? "cartao" : socioId ? "" : d.forma || "") : "", canal: t === "entrada" ? d.canal : "",
             comprovante, obs: d.obs.trim(), criadoPor: auth.currentUser.uid, criadoPorNome: perfil.nome, criadoEm: serverTimestamp()
           });
-          await auditar(perfil, "lancamento_criado", `${TIPOS[t]} ${brl(valor)}: ${d.descricao.trim()} (${socioId ? nomeSocio(socioId) : "Caixa"})`);
+          await auditar(perfil, "lancamento_criado", `${TIPOS[t]} ${brl(valor)}: ${d.descricao.trim()} (${cartaoSel ? cartaoSel.nome : socioId ? nomeSocio(socioId) : "Caixa"})`);
         }
         dL.close(); toast("Lançamento salvo.");
       } else if (id === "fCfg") {
@@ -272,7 +282,9 @@ export async function render(el, { perfil }) {
 
   const erro = (e) => { console.error(e); toast(traduzErro(e)); };
   const paradas = [
-    onSnapshot(collection(db, "lancamentos"), (s) => { lancs = s.docs.map((d) => ({ id: d.id, ...d.data() })); desenhar(); }, erro),
+    onSnapshot(collection(db, "lancamentos"), (s) => { lancsBase = s.docs.map((d) => ({ id: d.id, ...d.data() })); lancs = [...lancsBase, ...extras]; desenhar(); }, erro),
+    assinarEntradas((x) => { extras = x; lancs = [...lancsBase, ...extras]; desenhar(); }, erro),   // entradas do fechamento diário
+    onSnapshot(collection(db, "cartoes"), (s) => { cartoes = s.docs.map((d) => ({ id: d.id, ...d.data() })); }, erro),
     onSnapshot(doc(db, "config", "geral"), (s) => { cfg = s.exists() ? s.data() : {}; desenhar(); }, erro),
     onSnapshot(collection(db, "categorias_fin"), async (s) => {
       cats = s.docs.map((d) => ({ id: d.id, ...d.data() }));

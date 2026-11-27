@@ -2,6 +2,8 @@ import { db } from "../firebase.js";
 import { traduzErro } from "../auth.js";
 import { esc, toast, brl, fmtDia } from "../util.js";
 import { carregarEquipe } from "../core/equipe.js";
+import { resumo } from "../core/financas.js";
+import { carregarEntradas } from "../core/caixa-dados.js";
 import { criarCalc, indicadores, fmtQtd } from "../core/custos.js";
 import { estoqueDe, diasAte } from "../core/estoque-calc.js";
 import { mesAtual, inicioMesMs, fimMesMs, agruparTurnos, totalSegundos, fmtHoras } from "../core/ponto.js";
@@ -32,7 +34,7 @@ export async function render(el, { perfil }) {
 
   // ---------- Financeiro ----------
   async function rFin() {
-    const lan = await todos("lancamentos"), cfgS = await getDoc(doc(db, "config", "geral")), caixaIni = cfgS.exists() ? cfgS.data().caixaInicial || 0 : 0;
+    const lan = [...(await todos("lancamentos")), ...(await carregarEntradas())], cfgS = await getDoc(doc(db, "config", "geral")), caixaIni = cfgS.exists() ? cfgS.data().caixaInicial || 0 : 0;
     const soma = (m, f) => lan.filter((l) => l.data.startsWith(m) && f(l)).reduce((s, l) => s + l.valor, 0);
     const ent = soma(mes, (l) => l.tipo === "entrada"), des = soma(mes, (l) => l.tipo === "despesa"), ret = soma(mes, (l) => l.tipo === "retirada");
     const meses = Array.from({ length: 6 }, (_, i) => mesesAtras(mes, 5 - i));
@@ -40,8 +42,7 @@ export async function render(el, { perfil }) {
     const porCat = {}; lan.filter((l) => l.data.startsWith(mes) && l.tipo === "despesa").forEach((l) => { porCat[l.categoria] = (porCat[l.categoria] || 0) + l.valor; });
     const cats = Object.entries(porCat).sort((a, b) => b[1] - a[1]), max = cats[0]?.[1] || 1;
     const canais = {}; lan.filter((l) => l.data.startsWith(mes) && l.tipo === "entrada").forEach((l) => { const c = l.canal || "não informado"; canais[c] = (canais[c] || 0) + l.valor; });
-    let cx = Number(caixaIni) || 0;
-    lan.forEach((l) => { if (["emprestimo", "entrada"].includes(l.tipo)) cx += l.valor; else if (l.tipo === "despesa") { if (!l.socioId) cx -= l.valor; } else cx -= l.valor; });
+    const cx = resumo(lan, caixaIni).caixa;
     ultimo = { nome: `financeiro-${mes}`, cab: ["Mês", "Entradas", "Despesas", "Retiradas", "Resultado"], linhas: linhas.map((l) => l.map(tira)) };
     corpo.innerHTML = `<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-5">${kpi("Entradas", brl(ent), nomeMes(mes))}${kpi("Despesas", brl(des))}${kpi("Resultado do mês", brl(ent - des), "entradas menos despesas")}${kpi("Saldo em caixa hoje", brl(cx))}</div>
       <h3 class="h2 mb-3">Últimos 6 meses</h3>${grade(ultimo.cab, linhas)}

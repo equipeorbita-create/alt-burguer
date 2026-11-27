@@ -2,6 +2,7 @@ import { db } from "../firebase.js";
 import { traduzErro } from "../auth.js";
 import { esc, toast, auditar, fmtDia } from "../util.js";
 import { carregarEquipe } from "../core/equipe.js";
+import { DIAS } from "../core/rotinas.js";
 import { TIPOS_PONTO, horaFortaleza, fmtHoras, situacao, agruparTurnos, totalSegundos, mesAtual, inicioMesMs, fimMesMs } from "../core/ponto.js";
 import {
   collection, doc, onSnapshot, updateDoc, setDoc, runTransaction, query, where, orderBy, Timestamp, serverTimestamp
@@ -23,6 +24,8 @@ export async function render(el, { perfil }) {
       <label>Cargo<input name="cargo" maxlength="60" class="input" placeholder="Ex.: Chapeiro, Atendente"></label>
       <div class="grid grid-cols-2 gap-4"><label>Telefone / WhatsApp<input name="telefone" maxlength="30" class="input"></label>
         <label>Data de admissão<input name="admissao" type="date" class="input"></label></div>
+      <div class="grid grid-cols-2 gap-4"><label>Horário de entrada<input name="horaEntrada" type="time" class="input"></label><label>Horário de saída<input name="horaSaida" type="time" class="input"></label></div>
+      <fieldset><legend class="text-sm font-semibold text-ink/70 mb-2">Dias de trabalho</legend><div class="flex flex-wrap gap-3">${DIAS.map((d, i) => `<label class="flex items-center gap-2" style="font-size:1rem;color:inherit"><input type="checkbox" name="dias" value="${i}"> ${d}</label>`).join("")}</div></fieldset>
       <label>Jornada diária (horas)<input name="jornada" inputmode="decimal" class="input" placeholder="Ex.: 8"></label>
       <label>Observações<textarea name="obs" rows="3" maxlength="400" class="input"></textarea></label>
       <div class="flex gap-3 justify-end"><button type="button" data-fechar="dF" class="btn-alt">Cancelar</button><button class="btn">Salvar</button></div></form></dialog>
@@ -109,16 +112,16 @@ export async function render(el, { perfil }) {
 
   // ---------- Fichas ----------
   function vFichas() {
-    corpo.innerHTML = !equipe.length ? '<div class="card">Nenhum funcionário ativo.</div>' : `<div class="card"><table><tr><th>Nome</th><th>Cargo</th><th>Telefone</th><th>Jornada</th><th>Admissão</th>${admin ? "<th></th>" : ""}</tr>
+    corpo.innerHTML = !equipe.length ? '<div class="card">Nenhum funcionário ativo.</div>' : `<div class="card"><table><tr><th>Nome</th><th>Cargo</th><th>Telefone</th><th>Horário</th><th>Jornada</th><th>Admissão</th>${admin ? "<th></th>" : ""}</tr>
       ${equipe.map((m) => { const f = fichas[m.uid] || {}; return `<tr><td><b>${esc(m.nome)}</b><br><small class="text-ink/70">${esc(m.email || "")}</small></td><td>${esc(f.cargo || "—")}</td>
         <td>${f.telefone ? `<a class="underline text-brand-dark" href="https://wa.me/${f.telefone.replace(/\D/g, "").length <= 11 ? "55" : ""}${f.telefone.replace(/\D/g, "")}" target="_blank" rel="noopener">${esc(f.telefone)}</a>` : "—"}</td>
-        <td>${f.jornada ? f.jornada + " h/dia" : "—"}</td><td>${f.admissao ? fmtDia(f.admissao) : "—"}</td>
+        <td>${f.horaEntrada && f.horaSaida ? `${f.horaEntrada} às ${f.horaSaida}` : "—"}${(f.dias || []).length ? `<br><small class="text-ink/70">${f.dias.map((d) => DIAS[d]).join(", ")}</small>` : ""}</td><td>${f.jornada ? f.jornada + " h/dia" : "—"}</td><td>${f.admissao ? fmtDia(f.admissao) : "—"}</td>
         ${admin ? `<td><button class="btn-alt" data-act="editF" data-id="${m.uid}">Editar</button></td>` : ""}</tr>`; }).join("")}</table></div>`;
   }
   function abrirFicha(m) {
     editando = m; raiz.querySelector("#tF").textContent = `Ficha · ${m.nome}`;
     fF.reset(); const f = fichas[m.uid] || {}, x = fF.elements;
-    x.cargo.value = f.cargo || ""; x.telefone.value = f.telefone || ""; x.admissao.value = f.admissao || ""; x.jornada.value = f.jornada ? String(f.jornada).replace(".", ",") : ""; x.obs.value = f.obs || "";
+    x.cargo.value = f.cargo || ""; x.telefone.value = f.telefone || ""; x.admissao.value = f.admissao || ""; x.jornada.value = f.jornada ? String(f.jornada).replace(".", ",") : ""; x.obs.value = f.obs || ""; x.horaEntrada.value = f.horaEntrada || ""; x.horaSaida.value = f.horaSaida || ""; fF.querySelectorAll('[name="dias"]').forEach((c) => { c.checked = (f.dias || []).includes(Number(c.value)); });
     dF.showModal();
   }
 
@@ -150,7 +153,8 @@ export async function render(el, { perfil }) {
     const d = Object.fromEntries(new FormData(fF)), j = d.jornada ? Number(String(d.jornada).replace(",", ".")) : null;
     if (j !== null && !(j > 0 && j <= 24)) return toast("Jornada inválida (de 1 a 24 horas).");
     try {
-      await setDoc(doc(db, "funcionarios", editando.uid), { cargo: d.cargo.trim(), telefone: d.telefone.trim(), admissao: d.admissao || "", jornada: j, obs: d.obs.trim(), atualizadoEm: serverTimestamp() }, { merge: true });
+      if (!!d.horaEntrada !== !!d.horaSaida) return toast("Informe o horário de entrada e também o de saída.");
+      await setDoc(doc(db, "funcionarios", editando.uid), { horaEntrada: d.horaEntrada || "", horaSaida: d.horaSaida || "", dias: [...fF.querySelectorAll('[name="dias"]:checked')].map((c) => Number(c.value)), cargo: d.cargo.trim(), telefone: d.telefone.trim(), admissao: d.admissao || "", jornada: j, obs: d.obs.trim(), atualizadoEm: serverTimestamp() }, { merge: true });
       await auditar(perfil, "ficha_funcionario_salva", editando.nome);
       dF.close(); toast("Ficha salva.");
     } catch (err) { erro(err); }

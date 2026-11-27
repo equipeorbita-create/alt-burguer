@@ -1,6 +1,7 @@
 import { db } from "../firebase.js";
 import { esc, PAPEIS, hojeISO, fmtDia, brl, toast } from "../util.js";
 import { resumo } from "../core/financas.js";
+import { carregarEntradas } from "../core/caixa-dados.js";
 import { estoqueDe, diasAte } from "../core/estoque-calc.js";
 import { collection, getDocs, doc, getDoc, query, where, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -59,7 +60,7 @@ export async function render(el, { perfil }) {
   try {
     [tar, forn, orc, pat, lan, reemb, ins, lot] = await Promise.all([tarefasDe(perfil), admin ? pegar("fornecedores") : [], admin ? pegar("orcamentos") : [], admin ? pegar("patrimonio") : [], admin ? pegar("lancamentos") : [], admin ? pegar("reembolsos") : [], pegar("insumos"),
       getDocs(query(collection(db, "lotes"), where("qtdAtual", ">", 0))).then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() })))]);
-    if (admin) { const c = await getDoc(doc(db, "config", "geral")); cfg = c.exists() ? c.data() : {}; }
+    if (admin) { const c = await getDoc(doc(db, "config", "geral")); cfg = c.exists() ? c.data() : {}; lan = [...lan, ...(await carregarEntradas())]; }
   } catch (e) {
     console.error(e);
     el.innerHTML = topo + `<div class="card">Não foi possível carregar os indicadores.</div>`;

@@ -94,3 +94,6 @@ export function projecaoFluxo({ saldo, recebiveis, contas, faturas, hoje, dias =
   }
   return linhas;
 }
+
+// Formas de pagamento das despesas pagas pelo caixa ou pelo bolso de um sócio
+export const FORMAS_PAG = { dinheiro: "Dinheiro", pix: "PIX", debito: "Débito", boleto: "Boleto", transferencia: "Transferência", outra: "Outra" };

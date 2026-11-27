@@ -2,6 +2,7 @@ import { db, auth } from "../firebase.js";
 import { traduzErro } from "../auth.js";
 import { esc, toast, auditar, brl, parseBRL, hojeISO, fmtDia, fmtData } from "../util.js";
 import { resumo, carregarSocios, r2 } from "../core/financas.js";
+import { assinarEntradas } from "../core/caixa-dados.js";
 import {
   collection, onSnapshot, addDoc, doc, runTransaction, query, orderBy, limit, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -18,7 +19,7 @@ export async function render(el, { perfil }) {
   const eu = auth.currentUser.uid;
   const socios = await carregarSocios();
   const nome = (id) => (socios.find((s) => s.uid === id) || {}).nome || "—";
-  let lancs = [], reembs = [], cfg = {}, logs = [], aba = "conta";
+  let lancsBase = [], extras = [], lancs = [], reembs = [], cfg = {}, logs = [], aba = "conta";
 
   el.innerHTML = `<div id="raiz">
     <div class="flex flex-wrap items-center gap-3 mb-4">
@@ -168,7 +169,8 @@ export async function render(el, { perfil }) {
 
   const erro = (e) => { console.error(e); toast(traduzErro(e)); };
   const paradas = [
-    onSnapshot(collection(db, "lancamentos"), (s) => { lancs = s.docs.map((d) => ({ id: d.id, ...d.data() })); desenhar(); }, erro),
+    onSnapshot(collection(db, "lancamentos"), (s) => { lancsBase = s.docs.map((d) => ({ id: d.id, ...d.data() })); lancs = [...lancsBase, ...extras]; desenhar(); }, erro),
+    assinarEntradas((x) => { extras = x; lancs = [...lancsBase, ...extras]; desenhar(); }, erro),
     onSnapshot(collection(db, "reembolsos"), (s) => { reembs = s.docs.map((d) => ({ id: d.id, ...d.data() })); desenhar(); }, erro),
     onSnapshot(doc(db, "config", "geral"), (s) => { cfg = s.exists() ? s.data() : {}; desenhar(); }, erro),
     onSnapshot(query(collection(db, "auditoria"), orderBy("em", "desc"), limit(100)), (s) => { logs = s.docs.map((d) => d.data()); desenhar(); }, erro)
